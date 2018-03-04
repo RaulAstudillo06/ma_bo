@@ -23,26 +23,40 @@ class MultiObjective(Objective):
     """
 
 
-    def __init__(self, output_dim, func, objective_name = None, space = None):
-        self.output_dim  = output_dim
+    def __init__(self, func, noise_var=None, objective_name=None):     
         self.func  = func
-        self.num_evaluations = 0
-        self.space = space
+        self.output_dim  = len(self.func)
+        if noise_var is None:
+            self.noise_var = [1]*self.output_dim
+        else:
+            self.noise_var = noise_var
         if objective_name is None:
             self.objective_name = ['no_name']*self.output_dim
         else:
             self.objective_name = objective_name
+            
         self.objective = [None]*self.output_dim
         for j in range(0,self.output_dim):
-            self.objective[j] = GPyOpt.core.task.SingleObjective(func[j])
+            self.objective[j] = GPyOpt.core.task.SingleObjective(func=self.func[j],objective_name=self.objective_name[j])
 
 
     def evaluate(self, x):
         """
         Performs the evaluation of the objectives at x.
         """
-        f_evals = [None]*self.output_dim #np.zeros(self.output_dim)
-        cost_evals = 0
+        f_eval = [None]*self.output_dim #np.zeros(self.output_dim)
+        cost_eval = 0
         for j in range(0,self.output_dim):
-            f_evals[j], _ = self.objective[j].evaluate(x)
-        return f_evals, cost_evals
+            f_eval[j] = self.objective[j].evaluate(x)[0]
+        return f_eval, cost_eval
+    
+    
+    def evaluate_w_noise(self, x):
+        """
+        Performs the evaluation of the objectives at x.
+        """
+        f_noisy_eval = self.evaluate(x)[0]
+        for j in range(0,self.output_dim):
+            f_noisy_eval[j] += np.random.normal
+            
+        return f_noisy_eval

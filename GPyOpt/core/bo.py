@@ -136,7 +136,10 @@ class BO(object):
 
             if not ((self.num_acquisitions < self.max_iter) and (self._distance_last_evaluations() > self.eps)):
                 break
-
+            
+            print(2)
+            print(self.suggested_sample)
+            print(self.model.predict(self.suggested_sample)[0])
             self.suggested_sample = self._compute_next_evaluations()
 
             # --- Augment X
@@ -189,7 +192,10 @@ class BO(object):
         """
         Evaluates the objective
         """
+        print(1)
+        print(self.suggested_sample)
         self.Y_new, cost_new = self.objective.evaluate(self.suggested_sample)
+        print(self.Y_new)
         self.cost.update_cost_model(self.suggested_sample, cost_new)
         self.Y = np.vstack((self.Y,self.Y_new))
 

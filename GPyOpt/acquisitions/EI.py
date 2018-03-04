@@ -37,7 +37,6 @@ class AcquisitionEI(AcquisitionBase):
         fmin = self.model.get_fmin()
         phi, Phi, u = get_quantiles(self.jitter, fmin, m, s)
         f_acqu = s * (u * Phi + phi)
-        #print(f_acqu)
         return f_acqu
 
     def _compute_acq_withGradients(self, x):
@@ -49,5 +48,4 @@ class AcquisitionEI(AcquisitionBase):
         phi, Phi, u = get_quantiles(self.jitter, fmin, m, s)
         f_acqu = s * (u * Phi + phi)
         df_acqu = dsdx * phi - Phi * dmdx
-        print(df_acqu.ndim)
         return f_acqu, df_acqu

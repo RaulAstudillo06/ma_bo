@@ -39,9 +39,10 @@ class multi_outputGP(object):
             self.exact_feval = exact_feval
             
         if ARD is None:
-            self.ARD = [False]*output_dim
+            self.ARD = [True]*output_dim
         else:
             self.ARD = ARD
+            
         
         self.output = [None]*output_dim
         for j in range(0,output_dim):
@@ -51,30 +52,86 @@ class multi_outputGP(object):
     #def fromConfig(config):
         #return multi_outputGP(**config)
 
-    def _create_model(self, X, Y):
-        """
-        Creates the model given some input data X and Y.
-        """
-        for j in range(0,self.output_dim):
-            #self.output[i] = GPy.models.GPmodel(kernel=self.kernel[i],noise_var=self.noise_var[i],exact_feval=self.exact_feval[i],ARD=self.ARD[i])
-            self.output[j].updateModel(X,Y[j],None,None)
 
-    def updateModel(self, X_all, Y_all, X_new, Y_new):
+    def updateModel(self, X_all, Y_all):
         """
         Updates the model with new observations.
         """
-        if X_new is None:
-            self._create_model(X_all,Y_all)
-        else:
-            for j in range(0,self.output_dim):
-                self.output[j].updateModel(X_all,Y_all[j],X_new,Y_new[j])
+        for j in range(0,self.output_dim):
+            self.output[j].updateModel(X_all,Y_all[j],None,None)
 
-    def predict(self, X, full_cov=False):
+
+    def predict(self,  X,  full_cov=False):
         """
         Predictions with the model. Returns posterior means and standard deviations at X. Note that this is different in GPy where the variances are given.
         """
-        m = [None]*self.output_dim
-        cov = [None]*self.output_dim
-        for j in range(0,self.output_dim):
-            m[j], cov[j] = self.output[j].predict(X,full_cov)
+        m = np.empty((self.output_dim,X.shape[0]))
+        cov = np.empty((self.output_dim,X.shape[0]))
+        for j in range(self.output_dim):
+            tmp1, tmp2= self.output[j].predict(X,full_cov)
+            m[j,:] = tmp1[:,0]
+            cov[j,:] = tmp2[:,0]
         return m, cov
+
+    
+    def posterior_covariance_between_points(self,  X1,  X2):
+        """
+        Computes the posterior covariance between points.
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        cov = np.empty((self.output_dim,X1.shape[0],X2.shape[0]))
+        for j in range(0,self.output_dim):
+            cov[j,:,:] = self.output[j].posterior_covariance_between_points(X1, X2)
+        return cov
+    
+    def posterior_mean_gradient(self,  X):
+        """
+        Computes dmu/dX(X).
+        :param X:  input observations
+        """
+        dmu_dX = np.empty((self.output_dim,X.shape[0],X.shape[1]))
+        for j in range(0,self.output_dim):
+            tmp = self.output[j].posterior_mean_gradient(X)
+            dmu_dX[j,:,:] = tmp[:,:,0]
+        return dmu_dX
+    
+    
+    def posterior_variance_gradient(self,  X):
+        """
+        Computes dmu/dX(X).
+        :param X:  input observations
+        """
+        dvarX_dX = np.empty((self.output_dim,X.shape[0],X.shape[1]))
+        for j in range(0,self.output_dim):
+            dvarX_dX[j,:,:] = self.output[j].posterior_variance_gradient(X)
+            
+        return dvarX_dX
+    
+    
+    def posterior_covariance_gradient(self, X, x2):
+        """
+        Computes dK/dX(X,x2).
+        :param X: input obersevations.
+        :param x2:  input observation.
+        """
+        dK_dX = np.empty((self.output_dim,X.shape[0],X.shape[1]))
+        for j in range(0,self.output_dim):
+            dK_dX[j,:,:] = self.output[j].posterior_covariance_gradient(X, x2)
+        return dK_dX
+    
+    def get_model_parameters(self):
+        """
+        Returns a 2D numpy array with the parameters of the model
+        """
+        model_parameters = [None]*self.output_dim
+        for j in range(0,self.output_dim):
+            model_parameters[j] = self.output[j].get_model_parameters()
+
+    def get_model_parameters_names(self):
+        """
+        Returns a list with the names of the parameters of the model
+        """
+        model_parameters_names = [None]*self.output_dim
+        for j in range(0,self.output_dim):
+            model_parameters_names[j] = self.output[j].get_model_parameters_names()

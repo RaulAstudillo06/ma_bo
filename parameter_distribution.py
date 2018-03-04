@@ -51,7 +51,7 @@ class ParameterDistribution(object):
     param constraints: list of dictionaries as indicated above (default, none)
 
     """
-    def __init__(self, continuous=False, support=None, prob_dist=None,sample_generator=None):
+    def __init__(self, continuous=False, support=None, prob_dist=None, sample_generator=None):
         if continuous==True and sample_gen is None:
             pass
         else:

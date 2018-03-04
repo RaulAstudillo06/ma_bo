@@ -40,6 +40,8 @@ class GPModel(BOModel):
         self.num_inducing = num_inducing
         self.model = None
         self.ARD = ARD
+        #
+        #self._constant_mean = None
 
     @staticmethod
     def fromConfig(config):
@@ -53,7 +55,7 @@ class GPModel(BOModel):
         # --- define kernel
         self.input_dim = X.shape[1]
         if self.kernel is None:
-            kern = GPy.kern.Matern52(self.input_dim, variance=1., ARD=self.ARD) #+ GPy.kern.Bias(self.input_dim)
+            kern = GPy.kern.RBF(self.input_dim, variance=1., ARD=self.ARD) #+ GPy.kern.Bias(self.input_dim)
         else:
             kern = self.kernel
             self.kernel = None
@@ -77,6 +79,8 @@ class GPModel(BOModel):
         """
         Updates the model with new observations.
         """
+        #self.constant_mean = Y_all.mean()
+        #Y_inmodel = Y_all - self.constant_mean
         if self.model is None:
             self._create_model(X_all, Y_all)
         else:
@@ -89,6 +93,7 @@ class GPModel(BOModel):
                 self.model.optimize(optimizer=self.optimizer, max_iters = self.max_iters, messages=False, ipython_notebook=False)
             else:
                 self.model.optimize_restarts(num_restarts=self.optimize_restarts, optimizer=self.optimizer, max_iters = self.max_iters, verbose=self.verbose)
+                
 
     def predict(self, X, full_cov=False):
         """
@@ -96,14 +101,45 @@ class GPModel(BOModel):
         """
         if X.ndim==1: X = X[None,:]
         m, v = self.model.predict(X,full_cov)
+        #m += self.constant_mean
         v = np.clip(v, 1e-10, np.inf)
-        return m, np.sqrt(v)
+        return m, v
+    
+    def posterior_covariance_between_points(self, X1, X2):
+        """
+        Computes the posterior covariance between points.
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        return self.model.posterior_covariance_between_points(X1,X2)
 
     def get_fmin(self):
         """
         Returns the location where the posterior mean is takes its minimal value.
         """
         return self.model.predict(self.model.X)[0].min()
+    
+    def posterior_mean_gradient(self,  X):
+        """
+        Computes dmu/dX(X).
+        :param X:  input observations
+        """
+        return self.model.posterior_mean_gradient(X)
+    
+    def posterior_variance_gradient(self,  X):
+        """
+        Computes dvar/dX(X).
+        :param X:  input observations
+        """
+        return self.model.posterior_variance_gradient(X)
+    
+    def posterior_covariance_gradient(self, X, X2):
+        """
+        Computes dK/dx(X,X2).
+        :param x: input obersevation.
+        :param X2:  input observations
+        """
+        return self.model.posterior_covariance_gradient(X,X2)
 
     def predict_withGradients(self, X):
         """
@@ -139,12 +175,14 @@ class GPModel(BOModel):
         """
         Returns a 2D numpy array with the parameters of the model
         """
+        #print(np.atleast_2d(self.model[:]))
         return np.atleast_2d(self.model[:])
 
     def get_model_parameters_names(self):
         """
         Returns a list with the names of the parameters of the model
         """
+        #print(self.model.parameter_names_flat().tolist())
         return self.model.parameter_names_flat().tolist()
 
 

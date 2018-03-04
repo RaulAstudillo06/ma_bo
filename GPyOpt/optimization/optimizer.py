@@ -24,11 +24,46 @@ class Optimizer(object):
         raise NotImplementedError("The optimize method is not implemented in the parent class.")
 
 
+class OptSgd(Optimizer):
+    '''
+    (Stochastic) gradient descent algorithm.
+    '''
+    def __init__(self, bounds, maxiter=2):
+        super(OptSgd, self).__init__(bounds)
+        self.maxiter = maxiter
+
+    def optimize(self, x0, f=None, df=None, f_df=None):
+        """
+        :param x0: initial point for a local optimizer.
+        :param f: function to optimize.
+        :param df: gradient of the function to optimize.
+        :param f_df: returns both the function to optimize and its gradient.
+        """
+        xmin = x0
+        fmin, dfx = f_df(x0)
+        x = x0
+        for t  in range(self.maxiter):
+            #print(x)
+            x = x - np.power(t,-0.7)*dfx
+            for k in range(x.shape[1]):
+                if x[0,k] < self.bounds[k][0]:
+                    x[0,k] = self.bounds[k][0]
+                elif x[0,k] > self.bounds[k][1]:
+                    x[0,k] = self.bounds[k][1]
+                    
+            fx, dfx = f_df(x)
+            if fmin > fx:
+                fmin = fx
+                xmin = x
+        
+        return xmin, fmin
+    
+
 class OptLbfgs(Optimizer):
     '''
     Wrapper for l-bfgs-b to use the true or the approximate gradients.
     '''
-    def __init__(self, bounds, maxiter=10):
+    def __init__(self, bounds, maxiter=2):
         super(OptLbfgs, self).__init__(bounds)
         self.maxiter = maxiter
 
@@ -41,13 +76,13 @@ class OptLbfgs(Optimizer):
         """
         import scipy.optimize
         if f_df is None and df is not None: f_df = lambda x: float(f(x)), df(x)
-        if f_df is not None:
-            def _f_df(x):
-                return f(x), f_df(x)[1][0]
+        #if f_df is not None:
+            #def _f_df(x):
+                #return f(x), f_df(x)[1][0]
         if f_df is None and df is None:
             res = scipy.optimize.fmin_l_bfgs_b(f, x0=x0, bounds=self.bounds,approx_grad=True, maxiter=self.maxiter)
         else:
-            res = scipy.optimize.fmin_l_bfgs_b(_f_df, x0=x0, bounds=self.bounds, maxiter=self.maxiter)
+            res = scipy.optimize.fmin_l_bfgs_b(f_df, x0=x0, bounds=self.bounds, maxiter=self.maxiter)
 
         ### --- We check here if the the optimizer moved. It it didn't we report x0 and f(x0) as scipy can return NaNs
         if res[2]['task'] == b'ABNORMAL_TERMINATION_IN_LNSRCH':
@@ -235,9 +270,12 @@ class OptimizationWithContext(object):
 def choose_optimizer(optimizer_name, bounds):
         """
         Selects the type of local optimizer
-        """
+        """          
         if optimizer_name == 'lbfgs':
             optimizer = OptLbfgs(bounds)
+        
+        elif optimizer_name == 'sgd':
+            optimizer = OptSgd(bounds)
 
         elif optimizer_name == 'DIRECT':
             optimizer = OptDirect(bounds)

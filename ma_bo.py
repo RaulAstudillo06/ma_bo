@@ -6,6 +6,7 @@ import collections
 import numpy as np
 import time
 import csv
+import matplotlib.pyplot as plt
 
 from GPyOpt.util.general import best_value
 from GPyOpt.util.duplicate_manager import DuplicateManager
@@ -20,7 +21,7 @@ except:
 
 class ma_BO(object):
     """
-    Runner of Bayesian optimization loop. This class wraps the optimization loop around the different handlers.
+    Runner of the multi-attribute Bayesian optimization loop. This class wraps the optimization loop around the different handlers.
     :param model: GPyOpt model class.
     :param space: GPyOpt space class.
     :param objective: GPyOpt objective class.
@@ -40,6 +41,7 @@ class ma_BO(object):
         self.space = space
         self.objective = objective
         self.acquisition = acquisition
+        self.utility = acquisition.utility
         self.evaluator = evaluator
         self.normalize_Y = normalize_Y
         self.model_update_interval = model_update_interval
@@ -67,8 +69,59 @@ class ma_BO(object):
         suggested_locations = self._compute_next_evaluations(pending_zipped_X = pending_X, ignored_zipped_X = ignored_X)
 
         return suggested_locations
+    
+    
+    def _value_so_far(self):
+        """
+        Computes E_n[U(f(x_max))|f], where U is the utility function, f is the true underlying ojective function and x_max = argmax E_n[U(f(x))|U]. See
+        function _value_so_far_marginal below.
+        """
 
-    def run_optimization(self, max_iter = 0, max_time = np.inf,  eps = 1e-8, context = None, verbosity=False, save_models_parameters= True, report_file = None, evaluations_file = None, models_file=None):
+        output = 0
+        support = self.utility.parameter_dist.support
+        prob_dist = self.utility.parameter_dist.prob_dist
+        for i in range(len(support)):
+            a = np.reshape(self.objective.evaluate(self._value_so_far_marginal(support[i]))[0],(2,))
+            #print(a)
+            output += self.utility.eval_func(support[i],a)*prob_dist[i]
+        #print(output)
+        return output
+    
+    
+    def _value_so_far_marginal(self, parameter):
+        """
+        Computes argmax E_n[U(f(x))|U] (The abuse of notation can be misleading; note that the expectation is with
+        respect to the posterior distribution on f after n evaluations)
+        """
+        if self.utility.linear:
+            def aux_func(X):
+                X = np.atleast_2d(X)
+                mu = self.model.predict(X)[0]
+                output = np.zeros((len(X),1))
+                
+                for i in range(0,len(X)):
+                    output[i,0] = self.utility.eval_func(parameter,mu[:,i])
+                return output
+        else:
+            def aux_func(X):
+                N = 2
+                X = np.atleast_2d(X)
+                mu, var = self.model.predict(X)
+                output = np.zeros((len(X),1))
+                sample = np.zeros(self.model.output_dim)
+                for i in range(0,len(X)):
+                    for n in range(0,N):
+                        Z = np.random.normal(size=self.model.output_dim)
+                        sample = mu[:,i,0] + np.multiply(np.sqrt(var[:,i,0]),Z)
+                        output[i,0] += self.utility.eval_func(parameter,sample)
+                    output[i,0] = output[i,0]/N
+                return output
+        
+        argmax = self.acquisition.optimizer.optimize_inner_func(aux_func)[0]
+        return argmax
+                
+          
+    def run_optimization(self, max_iter = 1, max_time = np.inf,  eps = 1e-8, context = None, verbosity=False, evaluations_file = None):
         """
         Runs Bayesian Optimization for a number 'max_iter' of iterations (after the initial exploration data)
 
@@ -85,18 +138,9 @@ class ma_BO(object):
 
         # --- Save the options to print and save the results
         self.verbosity = verbosity
-        self.save_models_parameters = save_models_parameters
-        self.report_file = report_file
         self.evaluations_file = evaluations_file
-        self.models_file = models_file
-        self.model_parameters_iterations = None
         self.context = context
-        
-        # --- Check if we can save the model parameters in each iteration
-        if self.save_models_parameters == True:
-            if not (isinstance(self.model, GPyOpt.models.GPModel) or isinstance(self.model, GPyOpt.models.GPModel_MCMC)):
-                print('Models printout after each iteration is only available for GP and GP_MCMC models')
-                self.save_models_parameters = False
+    
                 
         # --- Setting up stop conditions
         self.eps = eps
@@ -127,13 +171,7 @@ class ma_BO(object):
         self.num_acquisitions = 0
         self.suggested_sample = self.X
         self.Y_new = self.Y
-        #print(self.X)
-        #print(self.Y[0])
-        #print(self.Y[1])
-        #self.model.updateModel(self.X,self.Y,self.X,self.Y_new)
-        #m, cov = self.model.predict(self.X)
-        #print(cov[0])
-
+        #value_so_far = []
 
         # --- Initialize time cost of the evaluations
         while (self.max_time > self.cum_time):
@@ -145,10 +183,17 @@ class ma_BO(object):
 
             if not ((self.num_acquisitions < self.max_iter) and (self._distance_last_evaluations() > self.eps)):
                 break
+            
+            #value_so_far.append(self._value_so_far())
+            #print(2)
+            #print(self.suggested_sample)
+            #print(self.model.predict(self.suggested_sample))
+            self.model.get_model_parameters_names()
+            self.model.get_model_parameters()
 
             self.suggested_sample = self._compute_next_evaluations()
 
-            # --- Augment X
+            # --- Augment XS
             self.X = np.vstack((self.X,self.suggested_sample))
 
             # --- Evaluate *f* in X, augment Y and update cost function (if needed)
@@ -166,12 +211,13 @@ class ma_BO(object):
         #self._compute_results()
 
         # --- Print the desired result in files
-        if self.report_file is not None:
-            self.save_report(self.report_file)
-        if self.evaluations_file is not None:
-            self.save_evaluations(self.evaluations_file)
-        if self.models_file is not None:
-            self.save_models(self.models_file)
+        #if self.evaluations_file is not None:
+            #self.save_evaluations(self.evaluations_file)
+
+        #file = open('test_file.txt','w')                  
+        #plt.plot(range(self.num_acquisitions),value_so_far)
+        #plt.show()
+        #np.savetxt('test_file.txt',value_so_far)
 
     def _print_convergence(self):
         """
@@ -198,18 +244,13 @@ class ma_BO(object):
         """
         Evaluates the objective
         """
+        #print(1)
+        #print(self.suggested_sample)
         self.Y_new, cost_new = self.objective.evaluate(self.suggested_sample)
         self.cost.update_cost_model(self.suggested_sample, cost_new)
         for j in range(0,self.objective.output_dim):
+            print(self.Y_new[j])
             self.Y[j] = np.vstack((self.Y[j],self.Y_new[j]))
-
-    def _compute_results(self):
-        """
-        Computes the optimum and its value.
-        """
-        self.Y_best = best_value(self.Y)
-        self.x_opt = self.X[np.argmin(self.Y),:]
-        self.fx_opt = min(self.Y)
 
 
     def _distance_last_evaluations(self):
@@ -237,7 +278,6 @@ class ma_BO(object):
             
         ### We zip the value in case there are categorical variables
         return self.space.zip_inputs(self.evaluator.compute_batch(duplicate_manager=duplicate_manager, context_manager= self.acquisition.optimizer.context_manager))
-        
 
     def _update_model(self, normalization_type = 'stats'):
         """
@@ -247,7 +287,7 @@ class ma_BO(object):
 
             ### --- input that goes into the model (is unziped in case there are categorical variables)
             X_inmodel = self.space.unzip_inputs(self.X)
-            Y_inmodel = self.Y
+            Y_inmodel = list(self.Y)
             ### --- Output that goes into the model
             ### --- Only normalize with at least two elements and non null sdev
             for j in range(0,self.objective.output_dim):
@@ -256,142 +296,11 @@ class ma_BO(object):
                         Y_inmodel[j] = (self.Y[j]-self.Y[j].mean())/(self.Y[j].std())
                     elif normalization_type == 'maxmin':
                         Y_inmodel[j] = (self.Y[j] - self.Y[j].min())/(self.Y[j].max()-self.Y[j].min())
-            self.model.updateModel(X_inmodel, Y_inmodel, None, None)
+            self.model.updateModel(X_inmodel, Y_inmodel)
 
         ### --- Save parameters of the model
         #self._save_model_parameter_values()
 
-    def _save_model_parameter_values(self):
-        if self.model_parameters_iterations is None:
-            self.model_parameters_iterations = self.model.get_model_parameters()
-        else:
-            self.model_parameters_iterations = np.vstack((self.model_parameters_iterations,self.model.get_model_parameters()))
-
-    def plot_acquisition(self,filename=None):
-        """
-        Plots the model and the acquisition function.
-            if self.input_dim = 1: Plots data, mean and variance in one plot and the acquisition function in another plot
-            if self.input_dim = 2: as before but it separates the mean and variance of the model in two different plots
-        :param filename: name of the file where the plot is saved
-        """
-        if self.model.model is None:
-            from copy import deepcopy
-            model_to_plot = deepcopy(self.model)
-            model_to_plot.updateModel(self.X, self.Y, self.X, self.Y)
-        else:
-            model_to_plot = self.model
-
-        return plot_acquisition(self.acquisition.space.get_bounds(),
-                                model_to_plot.model.X.shape[1],
-                                model_to_plot.model,
-                                model_to_plot.model.X,
-                                model_to_plot.model.Y,
-                                self.acquisition.acquisition_function,
-                                self.suggest_next_locations(),
-                                filename)
-
-
-    def plot_convergence(self,filename=None):
-        """
-        Makes twp plots to evaluate the convergence of the model:
-            plot 1: Iterations vs. distance between consecutive selected x's
-            plot 2: Iterations vs. the mean of the current model in the selected sample.
-        :param filename: name of the file where the plot is saved
-        """
-        return plot_convergence(self.X,self.Y_best,filename)
 
     def get_evaluations(self):
         return self.X.copy(), self.Y.copy()
-
-    def save_report(self, report_file= None):
-        """
-        Saves a report with the main resutls of the optimization.
-
-        :param report_file: name of the file in which the results of the optimization are saved.
-        """
-
-        with open(report_file,'w') as file:
-            import GPyOpt
-            import time
-
-            file.write('-----------------------------' + ' GPyOpt Report file ' + '-----------------------------------\n')
-            file.write('GPyOpt Version ' + str(GPyOpt.__version__) + '\n')
-            file.write('Date and time:               ' + time.strftime("%c")+'\n')
-            if self.num_acquisitions==self.max_iter:
-                file.write('Optimization completed:      ' +'YES, ' + str(self.X.shape[0]).strip('[]') + ' samples collected.\n')
-                file.write('Number initial samples:      ' + str(self.initial_design_numdata) +' \n')
-            else:
-                file.write('Optimization completed:      ' +'NO,' + str(self.X.shape[0]).strip('[]') + ' samples collected.\n')
-                file.write('Number initial samples:      ' + str(self.initial_design_numdata) +' \n')
-
-            file.write('Tolerance:                   ' + str(self.eps) + '.\n')
-            file.write('Optimization time:           ' + str(self.cum_time).strip('[]') +' seconds.\n')
-
-            file.write('\n')
-            file.write('--------------------------------' + ' Problem set up ' + '------------------------------------\n')
-            file.write('Problem name:                ' + self.objective_name +'\n')
-            file.write('Problem dimension:           ' + str(self.space.dimensionality) +'\n')
-            file.write('Number continuous variables  ' + str(len(self.space.get_continuous_dims()) ) +'\n')
-            file.write('Number discrete variables    ' + str(len(self.space.get_discrete_dims())) +'\n')
-            file.write('Number bandits               ' + str(self.space.get_bandit().shape[0]) +'\n')
-            file.write('Noiseless evaluations:       ' + str(self.exact_feval) +'\n')
-            file.write('Cost used:                   ' + self.cost.cost_type +'\n')
-            file.write('Constraints:                  ' + str(self.constraints==True) +'\n')
-
-            file.write('\n')
-            file.write('------------------------------' + ' Optimization set up ' + '---------------------------------\n')
-            file.write('Normalized outputs:          ' + str(self.normalize_Y) + '\n')
-            file.write('Model type:                  ' + str(self.model_type).strip('[]') + '\n')
-            file.write('Model update interval:       ' + str(self.model_update_interval) + '\n')
-            file.write('Acquisition type:            ' + str(self.acquisition_type).strip('[]') + '\n')
-            file.write('Acquisition optimizer:       ' + str(self.acquisition_optimizer.optimizer_name).strip('[]') + '\n')
-
-            file.write('Acquisition type:            ' + str(self.acquisition_type).strip('[]') + '\n')
-            if hasattr(self, 'acquisition_optimizer') and hasattr(self.acquisition_optimizer, 'optimizer_name'):
-                file.write('Acquisition optimizer:       ' + str(self.acquisition_optimizer.optimizer_name).strip('[]') + '\n')
-            else:
-                file.write('Acquisition optimizer:       None\n')
-            file.write('Evaluator type (batch size): ' + str(self.evaluator_type).strip('[]') + ' (' + str(self.batch_size) + ')' + '\n')
-            file.write('Cores used:                  ' + str(self.num_cores) + '\n')
-
-            file.write('\n')
-            file.write('---------------------------------' + ' Summary ' + '------------------------------------------\n')
-            file.write('Value at minimum:            ' + str(min(self.Y)).strip('[]') +'\n')
-            file.write('Best found minimum location: ' + str(self.X[np.argmin(self.Y),:]).strip('[]') +'\n')
-
-            file.write('----------------------------------------------------------------------------------------------\n')
-            file.close()
-
-    def _write_csv(self, filename, data):
-        with open(filename, 'w') as csv_file:
-           writer = csv.writer(csv_file, delimiter='\t')
-           writer.writerows(data)
-
-    def save_evaluations(self, evaluations_file = None):
-        """
-        Saves a report with the results of the iterations of the optimization
-
-        :param evaluations_file: name of the file in which the results are saved.
-        """
-        iterations = np.array(range(1, self.Y.shape[0] + 1))[:, None]
-        results = np.hstack((iterations, self.Y, self.X))
-        header = ['Iteration', 'Y'] + ['var_' + str(k) for k in range(1, self.X.shape[1] + 1)]
-
-        data = [header] + results.tolist()
-        self._write_csv(evaluations_file, data)
-
-    def save_models(self, models_file):
-        """
-        Saves a report with the results of the iterations of the optimization
-
-        :param models_file: name of the file or a file buffer, in which the results are saved.
-        """
-        if self.model_parameters_iterations is None:
-            raise ValueError("No iterations have been carried out yet and hence no iterations of the BO can be saved")
-
-        iterations = np.array(range(1,self.model_parameters_iterations.shape[0]+1))[:,None]
-        results = np.hstack((iterations,self.model_parameters_iterations))
-        header = ['Iteration'] + self.model.get_model_parameters_names()
-
-        data = [header] + results.tolist()
-        self._write_csv(models_file, data)
