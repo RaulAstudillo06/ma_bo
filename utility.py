@@ -1,5 +1,4 @@
-# Copyright (c) 2016, the GPyOpt Authors
-# Licensed under the BSD 3-clause license (see LICENSE.txt)
+# Copyright (c) 2018, Raul Astudillo Marban
 
 import time
 import numpy as np
