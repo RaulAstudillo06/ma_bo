@@ -1,5 +1,4 @@
-# Copyright (c) 2018, the Authors
-# Licensed under the BSD 3-clause license (see LICENSE.txt)
+# Copyright (c) 2018, Raul Astudillo
 
 import numpy as np
 import GPyOpt

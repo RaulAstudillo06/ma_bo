@@ -1,5 +1,4 @@
-# Copyright (c) 2016, the GPyOpt Authors
-# Licensed under the BSD 3-clause license (see LICENSE.txt)
+# Copyright (c) 2018, Raul Astudillo Marban
 
 import numpy as np
 from GPyOpt.acquisitions.base import AcquisitionBase
@@ -120,7 +119,6 @@ class AcquisitionUKG(AcquisitionBase):
                         return -func_val, -func_gradient
                     
                     marginal_exp[i,t] -= self.optimizer.optimize_inner_func(f =inner_func, f_df=inner_func_gradient)[1]
-                    #marginal_exp[i,t] -= self.optimizer.optimize_inner_func(f =inner_func, f_df=inner_func_gradient)[1]
         marginal_exp = marginal_exp/n
         return marginal_exp
     
@@ -136,7 +134,6 @@ class AcquisitionUKG(AcquisitionBase):
         dacqX_dX = np.tensordot(gradient_marginal_expectation,prob_dist,1)
         acqX = np.reshape(acqX,(X.shape[0],1))
         dacqX_dX = np.reshape(dacqX_dX,X.shape)
-        #print(acqX)
         return acqX, dacqX_dX
         
         
