@@ -11,7 +11,8 @@ from ... import util
 from ...util.config import config # for assesing whether to use cython
 from paramz.caching import Cache_this
 from paramz.transformations import Logexp
-
+#import pyximport
+#pyximport.install()
 try:
     from . import stationary_cython
 except ImportError:
@@ -316,14 +317,16 @@ class Stationary(Kern):
             X2 = X
 
         #The high-memory numpy way:
-        #d =  X[:, None, :] - X2[None, :, :]
-        #grad = np.sum(tmp[:,:,None]*d,1)/self.lengthscale**2
-
+        d =  X[:, None, :] - X2[None, :, :]
+        grad = np.sum(tmp[:,:,None]*d,1)/self.lengthscale**2
+ 
         #the lower memory way with a loop
-        grad = np.empty(X.shape, dtype=np.float64)
-        for q in range(self.input_dim):
-            np.sum(tmp*(X[:,q][:,None]-X2[:,q][None,:]), axis=1, out=grad[:,q])
-        return grad/self.lengthscale**2
+        #grad = np.empty(X.shape, dtype=np.float64)
+        #for q in range(self.input_dim):
+            #np.sum(tmp*(X[:,q][:,None]-X2[:,q][None,:]), axis=1, out=grad[:,q])
+        #return grad/self.lengthscale**2
+        #print(grad/self.lengthscale**2)
+        return grad
 
     def _gradients_X_cython(self, dL_dK, X, X2=None):
         invdist = self._inv_dist(X, X2)

@@ -35,7 +35,7 @@ class GP(Model):
 
 
     """
-    def __init__(self, X, Y, kernel, likelihood, mean_function=None, inference_method=None, name='gp', Y_metadata=None, normalizer=False):
+    def __init__(self, X, Y, kernel, likelihood, mean_function=None, inference_method=None, name='gp', Y_metadata=None, normalizer=True):
         super(GP, self).__init__(name)
 
         assert X.ndim == 2
@@ -252,6 +252,7 @@ class GP(Model):
             This method is not designed to be called manually, the framework is set up to automatically call this method upon changes to parameters, if you call
             this method yourself, there may be unexpected consequences.
         """
+        #print('bbb')
         self.posterior, self._log_marginal_likelihood, self.grad_dict = self.inference_method.inference(self.kern, self.X, self.likelihood, self.Y_normalized, self.mean_function, self.Y_metadata)
         self.likelihood.update_gradients(self.grad_dict['dL_dthetaL'])
         self.kern.update_gradients_full(self.grad_dict['dL_dK'], self.X)
@@ -376,9 +377,48 @@ class GP(Model):
         return quantiles
     
     
+    def posterior_mean(self, Xnew, kern=None):
+        """
+        For making predictions, does not account for normalization or likelihood
+
+        full_cov is a boolean which defines whether the full covariance matrix
+        of the prediction is computed. If full_cov is False (default), only the
+        diagonal of the covariance is returned.
+
+        .. math::
+            p(f*|X*, X, Y) = \int^{\inf}_{\inf} p(f*|f,X*)p(f|X,Y) df
+                        = N(f*| K_{x*x}(K_{xx} + \Sigma)^{-1}Y, K_{x*x*} - K_{xx*}(K_{xx} + \Sigma)^{-1}K_{xx*}
+            \Sigma := \texttt{Likelihood.variance / Approximate likelihood covariance}
+        """
+        mu = self.posterior.raw_posterior_mean(kern=self.kern if kern is None else kern, Xnew=Xnew, pred_var=self._predictive_variable)
+        #print('test')
+        #print(mu)
+        if self.mean_function is not None:
+            mu += self.mean_function.f(Xnew)
+        return mu
+    
+    
+    def posterior_variance(self, Xnew, kern=None):
+        """
+        For making predictions, does not account for normalization or likelihood
+
+        full_cov is a boolean which defines whether the full covariance matrix
+        of the prediction is computed. If full_cov is False (default), only the
+        diagonal of the covariance is returned.
+
+        .. math::
+            p(f*|X*, X, Y) = \int^{\inf}_{\inf} p(f*|f,X*)p(f|X,Y) df
+                        = N(f*| K_{x*x}(K_{xx} + \Sigma)^{-1}Y, K_{x*x*} - K_{xx*}(K_{xx} + \Sigma)^{-1}K_{xx*}
+            \Sigma := \texttt{Likelihood.variance / Approximate likelihood covariance}
+        """
+        var = self.posterior.raw_posterior_variance(kern=self.kern if kern is None else kern, Xnew=Xnew, pred_var=self._predictive_variable)
+        var = self.likelihood.predictive_variance2(var)
+        return var
+    
+    
     def posterior_mean_gradient(self, X, kern=None):
         """
-        Compute the derivatives of the posterior mean with respect to X2
+        Compute the derivatives of the posterior mean with respect to X
 
         """
         if kern is None:
@@ -413,6 +453,53 @@ class GP(Model):
         return tmp
     
     
+    def partial_precomputation_for_covariance(self, X):
+        """
+        Computes the posterior covariance between points.
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        kern = self.kern
+        self.partial_precomp_cov = np.matmul(self.posterior.woodbury_inv,kern.K(self.X, X))
+        
+        
+    def partial_precomputation_for_covariance_gradient(self, x):
+        """
+        Computes the posterior covariance between points.
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        kern = self.kern
+        #x = np.atleast_2d(x)
+        self.partial_precomp_dcov = np.matmul(kern.K(x,self._predictive_variable),self.posterior.woodbury_inv)
+    
+    
+    def posterior_covariance_between_points(self, X1, X2):
+        """
+        Computes the posterior covariance between points.
+
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        return self.posterior.covariance_between_points(self.kern, self.X, X1, X2)
+     
+        
+    def posterior_covariance_between_points_partially_precomputed(self, X1, X2):
+        """
+        Computes the posterior covariance between points.
+
+        :param kern: GP kernel
+        :param X: current input observations
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        kern = self.kern
+
+        Kx1 = kern.K(self.X, X1)
+        K12 = kern.K(X1, X2)
+        return K12 - np.matmul(Kx1.T,self.partial_precomp_cov)
+        
+    
     def posterior_covariance_gradient(self, X, x2, kern=None):
         """
         Compute the derivatives of the posterior covariance K^(n)(X,x2) with respect to X.
@@ -429,6 +516,17 @@ class GP(Model):
         pos_cov_grad = kern.gradients_X(1, X, x2)  - np.squeeze(np.matmul(factor,tmp))
         return pos_cov_grad
     
+    
+    def posterior_covariance_gradient_partially_precomputed(self, X, x2):
+        """
+        Compute the derivatives of the posterior covariance K^(n)(X,x2) with respect to X.
+        """
+        kern = self.kern
+        tmp = np.empty((X.shape[0],self._predictive_variable.shape[0],X.shape[1]))
+        for i in range(self._predictive_variable.shape[0]):
+            tmp[:,i,:] = kern.gradients_X(1,X,np.atleast_2d(self._predictive_variable[i]))
+
+        return kern.gradients_X(1, X, x2)  - np.squeeze(np.matmul(self.partial_precomp_dcov,tmp))
     
 
     def predictive_gradients(self, Xnew, kern=None):
@@ -735,12 +833,3 @@ class GP(Model):
         """
         mu_star, var_star = self._raw_predict(x_test)
         return self.likelihood.log_predictive_density_sampling(y_test, mu_star, var_star, Y_metadata=Y_metadata, num_samples=num_samples)
-
-    def posterior_covariance_between_points(self, X1, X2):
-        """
-        Computes the posterior covariance between points.
-
-        :param X1: some input observations
-        :param X2: other input observations
-        """
-        return self.posterior.covariance_between_points(self.kern, self.X, X1, X2)

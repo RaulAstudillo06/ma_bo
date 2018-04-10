@@ -17,44 +17,43 @@ class AnchorPointsGenerator(object):
         raise NotImplementedError("get_anchor_point_scores is not implemented in the parent class.")
 
     def get(self, num_anchor=5, duplicate_manager=None, unique=False, context_manager=None):
-
         ## --- We use the context handler to remove duplicates only over the non-context variables
-        if context_manager and not self.space._has_bandit():
-            space_configuration_without_context = [self.space.config_space_expanded[idx] for idx in context_manager.nocontext_index_obj]
-            space = Design_space(space_configuration_without_context)
-            add_context = lambda x : context_manager._expand_vector(x)
-        else:
-            space = self.space
-            add_context = lambda x: x
+        #if context_manager and not self.space._has_bandit():
+            #space_configuration_without_context = [self.space.config_space_expanded[idx] for idx in context_manager.nocontext_index_obj]
+            #space = Design_space(space_configuration_without_context)
+            #add_context = lambda x : context_manager._expand_vector(x)
+        #else:
+            #space = self.space
+            #add_context = lambda x: x
 
         ## --- Generate initial design
-        X = initial_design(self.design_type, space, self.num_samples)
+        X = initial_design(self.design_type, self.space, self.num_samples)
 
-        if unique:
-            sorted_design = sorted(list({tuple(x) for x in X}))
-            X = space.unzip_inputs(np.vstack(sorted_design))
-        else:
-            X = space.unzip_inputs(X)
+        #if unique:
+            #sorted_design = sorted(list({tuple(x) for x in X}))
+            #X = space.unzip_inputs(np.vstack(sorted_design))
+        #else:
+            #X = space.unzip_inputs(X)
 
         ## --- Add context variables
-        X = add_context(X)
+        #X = add_context(X)
 
-        if duplicate_manager:
-            is_duplicate = duplicate_manager.is_unzipped_x_duplicate
-        else:
+        #if duplicate_manager:
+            #is_duplicate = duplicate_manager.is_unzipped_x_duplicate
+        #else:
             # In absence of duplicate manager, we never detect duplicates
-            is_duplicate = lambda _ : False
+            #is_duplicate = lambda _ : False
 
-        non_duplicate_anchor_point_indexes = [index for index, x in enumerate(X) if not is_duplicate(x)]
+        #non_duplicate_anchor_point_indexes = [index for index, x in enumerate(X) if not is_duplicate(x)]
 
-        if not non_duplicate_anchor_point_indexes:
-            raise FullyExploredOptimizationDomainError("No anchor points could be generated ({} used samples, {} requested anchor points).".format(self.num_samples,num_anchor))
+        #if not non_duplicate_anchor_point_indexes:
+            #raise FullyExploredOptimizationDomainError("No anchor points could be generated ({} used samples, {} requested anchor points).".format(self.num_samples,num_anchor))
 
-        if len(non_duplicate_anchor_point_indexes) < num_anchor:
+        #if len(non_duplicate_anchor_point_indexes) < num_anchor:
             # Since logging has not been setup yet, I do not know how to express warnings...I am using standard print for now.
-            print("Warning: expecting {} anchor points, only {} available.".format(num_anchor, len(non_duplicate_anchor_point_indexes)))
+            #print("Warning: expecting {} anchor points, only {} available.".format(num_anchor, len(non_duplicate_anchor_point_indexes)))
 
-        X = X[non_duplicate_anchor_point_indexes,:]
+        #X = X[non_duplicate_anchor_point_indexes,:]
 
         scores = self.get_anchor_point_scores(X)
         #print(scores)
@@ -84,7 +83,7 @@ class ThompsonSamplingAnchorPointsGenerator(AnchorPointsGenerator):
 
 class ObjectiveAnchorPointsGenerator(AnchorPointsGenerator):
 
-    def __init__(self, space, design_type, objective, num_samples=5):
+    def __init__(self, space, design_type, objective, num_samples=10):
         '''
         From an initial design, it selects the locations with the minimum value according to some objective.
         :param model_space: set to true when the samples need to be obtained for the input domain of the model
@@ -98,7 +97,7 @@ class ObjectiveAnchorPointsGenerator(AnchorPointsGenerator):
 
 class RandomAnchorPointsGenerator(AnchorPointsGenerator):
 
-    def __init__(self, space, design_type, num_samples=10000):
+    def __init__(self, space, design_type, num_samples=10):
         '''
         From an initial design, it selects the locations randomly, according to the specified design_type generation scheme.
         :param model_space: set to true when the samples need to be obtained for the input domain of the model

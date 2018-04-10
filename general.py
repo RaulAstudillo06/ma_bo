@@ -8,7 +8,7 @@ def unif_2d(n):
     param objective_name: name of the objective function.
     """
     output = [None]*n
-    for i in range(0,n):
+    for i in range(n):
         arg = 0.5*np.pi*(i)/(n-1)
         output[i] = [np.cos(arg), np.sin(arg)]
     return output

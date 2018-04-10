@@ -37,7 +37,7 @@ evaluator = GPyOpt.core.evaluators.Sequential(acquisition)
 
 # --- Put everything together
 bo = GPyOpt.methods.ModularBayesianOptimization(model, space, objective, acquisition, evaluator, initial_design)
-max_iter  = 10                                            
+max_iter  = 15                                           
 bo.run_optimization(max_iter = max_iter)
 bo.plot_acquisition()
 bo.plot_convergence()

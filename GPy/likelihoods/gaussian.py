@@ -106,6 +106,9 @@ class Gaussian(Likelihood):
 
     def predictive_variance(self, mu, sigma, predictive_mean=None):
         return self.variance + sigma**2
+    
+    def predictive_variance2(self, var):
+        return self.variance + var
 
     def predictive_quantiles(self, mu, var, quantiles, Y_metadata=None):
         return  [stats.norm.ppf(q/100.)*np.sqrt(var + self.variance) + mu for q in quantiles]

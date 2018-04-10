@@ -30,7 +30,6 @@ class ExactGaussianInference(LatentFunctionInference):
         """
         Returns a Posterior class containing essential quantities of the posterior
         """
-
         if mean_function is None:
             m = 0
         else:

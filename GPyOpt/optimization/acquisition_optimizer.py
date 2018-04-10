@@ -1,7 +1,7 @@
 # Copyright (c) 2016, the GPyOpt Authors
 # Licensed under the BSD 3-clause license (see LICENSE.txt)
 
-from .optimizer import OptLbfgs, OptDirect, OptCma, apply_optimizer, choose_optimizer
+from .optimizer import OptLbfgs, OptSgd, OptDirect, OptCma, apply_optimizer, choose_optimizer
 from .anchor_points_generator import ObjectiveAnchorPointsGenerator, ThompsonSamplingAnchorPointsGenerator
 from ..core.task.space import Design_space
 import numpy as np
@@ -71,8 +71,7 @@ class AcquisitionOptimizer(object):
         #print(anchor_points)
         
         ## --- Applying local optimizers at the anchor points and update bounds of the optimizer (according to the context)
-        optimized_points = [apply_optimizer(self.optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]
-        #print(optimized_points)
+        optimized_points = [apply_optimizer(self.optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]          
         x_min, fx_min = min(optimized_points, key=lambda t:t[1])
 
         #x_min, fx_min = min([apply_optimizer(self.optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points], key=lambda t:t[1])                   
@@ -93,7 +92,7 @@ class AcquisitionOptimizer(object):
         self.f_df = f_df
 
         ## --- Update the optimizer, in case context has beee passed.
-        self.optimizer = choose_optimizer(self.inner_optimizer_name, self.context_manager.noncontext_bounds)
+        self.inner_optimizer = choose_optimizer(self.inner_optimizer_name, self.context_manager.noncontext_bounds)
 
         ## --- Selecting the anchor points and removing duplicates
         if self.type_anchor_points_logic == max_objective_anchor_points_logic:
@@ -106,8 +105,15 @@ class AcquisitionOptimizer(object):
         #print(anchor_points)
         
         ## --- Applying local optimizers at the anchor points and update bounds of the optimizer (according to the context)
-        optimized_points = [apply_optimizer(self.optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]
-        #print(optimized_points)
+        optimized_points = [apply_optimizer(self.inner_optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]
+        #if f_df is not None:
+            #print(1)
+            #for a in optimized_points:
+                #fa, dfa = f_df(a[0])
+                #print('a')
+                #print(a[0])
+                #print(fa)
+                #print(dfa)
         x_min, fx_min = min(optimized_points, key=lambda t:t[1])
 
         #x_min, fx_min = min([apply_optimizer(self.optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points], key=lambda t:t[1])                   
@@ -133,6 +139,7 @@ class ContextManager(object):
         self.noncontext_index   = self.all_index[:]
 
         if context is not None:
+            #print('context')
 
             ## -- Update new context
             for context_variable in context.keys():

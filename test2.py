@@ -23,15 +23,15 @@ n_a = 2
 model = multi_outputGP(output_dim=n_a)
 
 # --- Aquisition optimizer
-aq_opt = GPyOpt.optimization.AcquisitionOptimizer(space=space,optimizer='sgd')
+aq_opt = GPyOpt.optimization.AcquisitionOptimizer(space=space)
 
 # --- Initial design
 initial_design = GPyOpt.experiment_design.initial_design('random', space, 5)
 #print(initial_design)
 
 # --- Parameter distribution
-l = 4
-support = unif_2d(l)
+l = 1
+support = [[0.5,0.5]]
 prob_dist = [1/l]*l
 parameter_distribution = ParameterDistribution(support=support,prob_dist=prob_dist)
 
@@ -54,5 +54,5 @@ acquisition = AcquisitionUKG(model, space, optimizer=aq_opt,utility=U)
 evaluator = GPyOpt.core.evaluators.Sequential(acquisition)
 ma_bo = ma_bo.ma_BO(model, space, f, acquisition, evaluator, initial_design)
 #bo = GPyOpt.methods.ModularBayesianOptimization(model, space, f, acquisition, evaluator, initial_design)
-max_iter  = 30                                        
+max_iter  = 2                       
 ma_bo.run_optimization(max_iter = max_iter)

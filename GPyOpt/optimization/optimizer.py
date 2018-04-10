@@ -28,7 +28,7 @@ class OptSgd(Optimizer):
     '''
     (Stochastic) gradient descent algorithm.
     '''
-    def __init__(self, bounds, maxiter=2):
+    def __init__(self, bounds, maxiter=50):
         super(OptSgd, self).__init__(bounds)
         self.maxiter = maxiter
 
@@ -39,31 +39,46 @@ class OptSgd(Optimizer):
         :param df: gradient of the function to optimize.
         :param f_df: returns both the function to optimize and its gradient.
         """
-        xmin = x0
-        fmin, dfx = f_df(x0)
+        print('sgd start')
         x = x0
+        #print(x)
+        fx, dfx = f_df(x)
         for t  in range(self.maxiter):
-            #print(x)
-            x = x - np.power(t,-0.7)*dfx
+            print(t)
+            x = x - 0.3*np.power(t+1,-0.7)*dfx
+            print(x)
             for k in range(x.shape[1]):
                 if x[0,k] < self.bounds[k][0]:
                     x[0,k] = self.bounds[k][0]
                 elif x[0,k] > self.bounds[k][1]:
                     x[0,k] = self.bounds[k][1]
                     
+            f_previous = fx       
             fx, dfx = f_df(x)
-            if fmin > fx:
-                fmin = fx
-                xmin = x
+            #print(dfx)
+            #print(fx)
+            #h = 1e-5
+            #x[0,0] +=h
+            #f_aux = f(x)
+            #print((f_aux-fx)/h)
+            #x[0,0] -=h
+            #x[0,1] +=h
+            #f_aux = f(x)
+            #print((f_aux-fx)/h)
+            #x[0,1] -=h          
+            if np.absolute(fx - f_previous) < 1e-5:
+                break       
         
-        return xmin, fmin
+        x = np.atleast_2d(x)
+        fx = np.atleast_2d(fx)
+        return x, fx
     
 
 class OptLbfgs(Optimizer):
     '''
     Wrapper for l-bfgs-b to use the true or the approximate gradients.
     '''
-    def __init__(self, bounds, maxiter=2):
+    def __init__(self, bounds, maxiter=40):
         super(OptLbfgs, self).__init__(bounds)
         self.maxiter = maxiter
 
@@ -75,14 +90,13 @@ class OptLbfgs(Optimizer):
         :param f_df: returns both the function to optimize and its gradient.
         """
         import scipy.optimize
-        if f_df is None and df is not None: f_df = lambda x: float(f(x)), df(x)
-        #if f_df is not None:
-            #def _f_df(x):
-                #return f(x), f_df(x)[1][0]
+        if f_df is None and df is not None:
+            f_df = lambda x: float(f(x)), df(x)
+            
         if f_df is None and df is None:
-            res = scipy.optimize.fmin_l_bfgs_b(f, x0=x0, bounds=self.bounds,approx_grad=True, maxiter=self.maxiter)
+            res = scipy.optimize.fmin_l_bfgs_b(f, x0=x0, bounds=self.bounds, approx_grad=True, maxiter=self.maxiter) #factr=1e4
         else:
-            res = scipy.optimize.fmin_l_bfgs_b(f_df, x0=x0, bounds=self.bounds, maxiter=self.maxiter)
+            res = scipy.optimize.fmin_l_bfgs_b(f_df, x0=x0, bounds=self.bounds, maxiter=self.maxiter, factr=1e7)
 
         ### --- We check here if the the optimizer moved. It it didn't we report x0 and f(x0) as scipy can return NaNs
         if res[2]['task'] == b'ABNORMAL_TERMINATION_IN_LNSRCH':
@@ -91,7 +105,8 @@ class OptLbfgs(Optimizer):
         else:
             result_x = np.atleast_2d(res[0])
             result_fx = np.atleast_2d(res[1])
-
+            
+        #print(res[2])
         return result_x, result_fx
 
 
@@ -134,7 +149,7 @@ class OptCma(Optimizer):
     an stochastic search based on multivariate Gaussian samples. Only requires f and the box constraints to work.
 
     '''
-    def __init__(self, bounds, maxiter=1000):
+    def __init__(self, bounds, maxiter=5):
         super(OptCma, self).__init__(bounds)
         self.maxiter = maxiter
 
@@ -173,32 +188,35 @@ def apply_optimizer(optimizer, x0, f=None, df=None, f_df=None, duplicate_manager
     """
 
     x0 = np.atleast_2d(x0)
+    
 
     ## --- Compute a new objective that inputs non context variables but that takes into account the values of the context ones.
     ## --- It does nothing if no context is passed
-    problem = OptimizationWithContext(x0=x0, f=f, df=df, f_df=f_df, context_manager=context_manager)
+    #problem = OptimizationWithContext(x0=x0, f=f, df=df, f_df=f_df, context_manager=context_manager)
 
+    #if context_manager:
+        #print('context manager')
+        #add_context = lambda x : context_manager._expand_vector(x)
+    #else:
+        #add_context = lambda x : x
 
-    if context_manager:
-        add_context = lambda x : context_manager._expand_vector(x)
-    else:
-        add_context = lambda x : x
-
-    if duplicate_manager and duplicate_manager.is_unzipped_x_duplicate(x0):
-        raise ValueError("The starting point of the optimizer cannot be a duplicate.")
+    #if duplicate_manager and duplicate_manager.is_unzipped_x_duplicate(x0):
+        #raise ValueError("The starting point of the optimizer cannot be a duplicate.")
 
     ## --- Optimize point
-    optimized_x, _ = optimizer.optimize(problem.x0_nocontext, problem.f_nocontext, problem.df_nocontext, problem.f_df_nocontext)
-
+    #optimized_x, suggested_fx = optimizer.optimize(problem.x0_nocontext, problem.f_nocontext, problem.df_nocontext, problem.f_df_nocontext)
+        
     ## --- Add context and round according to the type of variables of the design space
-    suggested_x_with_context = add_context(optimized_x)
-    suggested_x_with_context_rounded = space.round_optimum(suggested_x_with_context)
+    #suggested_x_with_context = add_context(optimized_x)
+    #suggested_x_with_context_rounded = space.round_optimum(suggested_x_with_context)
 
     ## --- Run duplicate_manager
-    if duplicate_manager and duplicate_manager.is_unzipped_x_duplicate(suggested_x_with_context_rounded):
-        suggested_x, suggested_fx = x0, np.atleast_2d(f(x0))
-    else:
-        suggested_x, suggested_fx = suggested_x_with_context_rounded, f(suggested_x_with_context_rounded)
+    #if duplicate_manager and duplicate_manager.is_unzipped_x_duplicate(suggested_x_with_context_rounded):
+        #suggested_x, suggested_fx = x0, np.atleast_2d(f(x0))
+    #else:
+        #suggested_x, suggested_fx = suggested_x_with_context_rounded, f(suggested_x_with_context_rounded)
+    suggested_x, suggested_fx = optimizer.optimize(x0, f, df, f_df)
+    #suggested_fx = f(suggested_x)
 
     return suggested_x, suggested_fx
 
@@ -223,14 +241,15 @@ class OptimizationWithContext(object):
             self.f_df_nocontext = self.f_df
 
         else:
+            #print('context')
             self.x0_nocontext = self.x0[:,self.context_manager.noncontext_index]
-            self.f_nocontext  = self.f #self.f_nc
+            self.f_nocontext  = self.f_nc
             if self.f_df is None:
                 self.df_nocontext = None
                 self.f_df_nocontext = None
             else:
-                self.df_nocontext = self.df_nc
-                self.f_df_nocontext  = self.f_df_nc
+                self.df_nocontext = self.df
+                self.f_df_nocontext  = self.f_df#self.f_df_nc
 
     def f_nc(self,x):
         '''

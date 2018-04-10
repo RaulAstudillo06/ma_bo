@@ -7,6 +7,7 @@ import time
 import csv
 import matplotlib.pyplot as plt
 
+from GPyOpt.experiment_design import initial_design
 from GPyOpt.util.general import best_value
 from GPyOpt.util.duplicate_manager import DuplicateManager
 from GPyOpt.core.errors import InvalidConfigError
@@ -35,7 +36,7 @@ class ma_BO(object):
     """
 
 
-    def __init__(self, model, space, objective, acquisition, evaluator, X_init, Y_init=None, cost = None, normalize_Y = False, model_update_interval = 1, de_duplication = False):
+    def __init__(self, model, space, objective, acquisition, evaluator, X_init, Y_init=None, cost = None, normalize_Y = False, model_update_interval = 1):
         self.model = model
         self.space = space
         self.objective = objective
@@ -47,8 +48,6 @@ class ma_BO(object):
         self.X = X_init
         self.Y = Y_init
         self.cost = CostModel(cost)
-        self.normalization_type = 'stats' ## not added in the API
-        self.de_duplication = de_duplication
         self.model_parameters_iterations = None
 
     def suggest_next_locations(self, context = None, pending_X = None, ignored_X = None):
@@ -80,7 +79,7 @@ class ma_BO(object):
         support = self.utility.parameter_dist.support
         prob_dist = self.utility.parameter_dist.prob_dist
         for i in range(len(support)):
-            a = np.reshape(self.objective.evaluate(self._value_so_far_marginal(support[i]))[0],(2,))
+            a = np.reshape(self.objective.evaluate(self._value_so_far_marginal(support[i]))[0],(self.objective.output_dim,))
             #print(a)
             output += self.utility.eval_func(support[i],a)*prob_dist[i]
         #print(output)
@@ -100,7 +99,7 @@ class ma_BO(object):
                 
                 for i in range(0,len(X)):
                     output[i,0] = self.utility.eval_func(parameter,mu[:,i])
-                return output
+                return -output
         else:
             def aux_func(X):
                 N = 2
@@ -114,9 +113,14 @@ class ma_BO(object):
                         sample = mu[:,i,0] + np.multiply(np.sqrt(var[:,i,0]),Z)
                         output[i,0] += self.utility.eval_func(parameter,sample)
                     output[i,0] = output[i,0]/N
-                return output
+                return -output
         
         argmax = self.acquisition.optimizer.optimize_inner_func(aux_func)[0]
+        #print(3)
+        #print(argmax)
+        #print(self.model.predict(argmax))
+        #print(self.model.predict([np.pi,2.275])[0])
+        #print(self.model.predict([9.42478,2.475])[0])
         return argmax
                 
           
@@ -170,23 +174,25 @@ class ma_BO(object):
         self.num_acquisitions = 0
         self.suggested_sample = self.X
         self.Y_new = self.Y
-        #value_so_far = []
+        value_so_far = []
 
         # --- Initialize time cost of the evaluations
         while (self.max_time > self.cum_time):
             # --- Update model
-            try:
-                self._update_model(self.normalization_type)
-            except np.linalg.linalg.LinAlgError:
-                break
+            #try:
+                #self._update_model(self.normalization_type)
+            #except np.linalg.linalg.LinAlgError:
+                #break
+                    
+            self._update_model()
 
             if not ((self.num_acquisitions < self.max_iter) and (self._distance_last_evaluations() > self.eps)):
                 break
             
-            #value_so_far.append(self._value_so_far())
-            #print(2)
-            #print(self.suggested_sample)
-            #print(self.model.predict(self.suggested_sample))
+            value_so_far.append(self._value_so_far())
+            print(2)
+            print(self.suggested_sample)
+            print(self.model.predict(self.suggested_sample))
             self.model.get_model_parameters_names()
             self.model.get_model_parameters()
 
@@ -206,48 +212,25 @@ class ma_BO(object):
                 print("num acquisition: {}, time elapsed: {:.2f}s".format(
                     self.num_acquisitions, self.cum_time))
 
-        # --- Stop messages and execution time
-        #self._compute_results()
-
         # --- Print the desired result in files
         #if self.evaluations_file is not None:
             #self.save_evaluations(self.evaluations_file)
 
         #file = open('test_file.txt','w')                  
-        #plt.plot(range(self.num_acquisitions),value_so_far)
-        #plt.show()
+        plt.plot(range(self.num_acquisitions),value_so_far)
+        plt.show()
         #np.savetxt('test_file.txt',value_so_far)
-
-    def _print_convergence(self):
-        """
-        Prints the reason why the optimization stopped.
-        """
-        # --- Print stopping reason
-        if self.verbosity:
-            if (self.num_acquisitions == self.max_iter) and (not self.initial_iter):
-                print('   ** Maximum number of iterations reached **')
-                return 1
-            elif (self._distance_last_evaluations() < self.eps) and (not self.initial_iter):
-                print('   ** Two equal location selected **')
-                return 1
-            elif (self.max_time < self.cum_time) and not (self.initial_iter):
-                print('   ** Evaluation time reached **')
-                return 0
-
-            if self.initial_iter:
-                print('** GPyOpt Bayesian Optimization class initialized successfully **')
-                self.initial_iter = False
 
 
     def evaluate_objective(self):
         """
         Evaluates the objective
         """
-        #print(1)
-        #print(self.suggested_sample)
+        print(1)
+        print(self.suggested_sample)
         self.Y_new, cost_new = self.objective.evaluate(self.suggested_sample)
-        self.cost.update_cost_model(self.suggested_sample, cost_new)
-        for j in range(0,self.objective.output_dim):
+        self.cost.update_cost_model(self.suggested_sample, cost_new)   
+        for j in range(self.objective.output_dim):
             print(self.Y_new[j])
             self.Y[j] = np.vstack((self.Y[j],self.Y_new[j]))
 
@@ -268,17 +251,12 @@ class ma_BO(object):
         """
         ## --- Update the context if any
         self.acquisition.optimizer.context_manager = ContextManager(self.space, self.context)
-
-        ### --- Activate de_duplication
-        if self.de_duplication:
-            duplicate_manager = DuplicateManager(space=self.space, zipped_X=self.X, pending_zipped_X=pending_zipped_X, ignored_zipped_X=ignored_zipped_X)
-        else:
-            duplicate_manager = None
             
         ### We zip the value in case there are categorical variables
-        return self.space.zip_inputs(self.evaluator.compute_batch(duplicate_manager=duplicate_manager, context_manager= self.acquisition.optimizer.context_manager))
+        return self.space.zip_inputs(self.evaluator.compute_batch(duplicate_manager=None))
+        #return initial_design('random', self.space, 1)
 
-    def _update_model(self, normalization_type = 'stats'):
+    def _update_model(self):
         """
         Updates the model (when more than one observation is available) and saves the parameters (if available).
         """
@@ -287,14 +265,7 @@ class ma_BO(object):
             ### --- input that goes into the model (is unziped in case there are categorical variables)
             X_inmodel = self.space.unzip_inputs(self.X)
             Y_inmodel = list(self.Y)
-            ### --- Output that goes into the model
-            ### --- Only normalize with at least two elements and non null sdev
-            for j in range(0,self.objective.output_dim):
-                if self.normalize_Y and (self.Y[j].shape[0]>1) and (self.Y[j].std()>0):
-                    if normalization_type == 'stats':
-                        Y_inmodel[j] = (self.Y[j]-self.Y[j].mean())/(self.Y[j].std())
-                    elif normalization_type == 'maxmin':
-                        Y_inmodel[j] = (self.Y[j] - self.Y[j].min())/(self.Y[j].max()-self.Y[j].min())
+            
             self.model.updateModel(X_inmodel, Y_inmodel)
 
         ### --- Save parameters of the model

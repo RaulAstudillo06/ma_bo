@@ -294,6 +294,31 @@ class PosteriorExact(Posterior):
                     var[:, i] = (Kxx - np.square(tmp).sum(0))
             var = var
         return mu, var
+    
+    
+    def raw_posterior_mean(self, kern, Xnew, pred_var):
+        Kx = kern.K(pred_var, Xnew)
+        mu = np.dot(Kx.T, self.woodbury_vector)
+        if len(mu.shape)==1:
+            mu = mu.reshape(-1,1)
+        return mu
+    
+    
+    def raw_posterior_variance(self, kern, Xnew, pred_var):
+        Kx = kern.K(pred_var, Xnew)
+        Kxx = kern.Kdiag(Xnew)
+        if self._woodbury_chol.ndim == 2:
+            tmp = dtrtrs(self._woodbury_chol, Kx)[0]
+            var = (Kxx - np.square(tmp).sum(0))[:,None]
+        elif self._woodbury_chol.ndim == 3: # Missing data
+            var = np.empty((Kxx.shape[0],self._woodbury_chol.shape[2]))
+            for i in range(var.shape[1]):
+                tmp = dtrtrs(self._woodbury_chol[:,:,i], Kx)[0]
+                var[:, i] = (Kxx - np.square(tmp).sum(0))
+        var = var
+        return var
+            
+        
 
 class PosteriorEP(Posterior):
 
