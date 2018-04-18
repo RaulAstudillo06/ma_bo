@@ -72,50 +72,56 @@ class ma_BO(object):
     def _value_so_far(self):
         """
         Computes E_n[U(f(x_max))|f], where U is the utility function, f is the true underlying ojective function and x_max = argmax E_n[U(f(x))|U]. See
-        function _value_so_far_marginal below.
+        function _marginal_max_value_so_far below.
         """
 
         output = 0
         support = self.utility.parameter_dist.support
-        prob_dist = self.utility.parameter_dist.prob_dist
+        utility_dist = self.utility.parameter_dist.prob_dist
         for i in range(len(support)):
-            a = np.reshape(self.objective.evaluate(self._value_so_far_marginal(support[i]))[0],(self.objective.output_dim,))
+            a = np.reshape(self.objective.evaluate(self._marginal_max_value_so_far(support[i]))[0],(self.objective.output_dim,))
             #print(a)
-            output += self.utility.eval_func(support[i],a)*prob_dist[i]
+            output += self.utility.eval_func(support[i],a)*utility_dist[i]
         #print(output)
         return output
     
     
-    def _value_so_far_marginal(self, parameter):
+    def _marginal_max_value_so_far(self, parameter):
         """
         Computes argmax E_n[U(f(x))|U] (The abuse of notation can be misleading; note that the expectation is with
         respect to the posterior distribution on f after n evaluations)
         """
         if self.utility.linear:
-            def aux_func(X):
+            def val_func(X):
                 X = np.atleast_2d(X)
-                mu = self.model.predict(X)[0]
-                output = np.zeros((len(X),1))
-                
-                for i in range(0,len(X)):
-                    output[i,0] = self.utility.eval_func(parameter,mu[:,i])
-                return -output
+                muX = self.model.posterior_mean(X)
+                valX = np.reshape(np.matmul(parameter, muX), (X.shape[0],1))
+                return -valX
+            
+            def val_func_with_gradient(X):
+                X = np.atleast_2d(X)
+                muX = self.model.posterior_mean(X)
+                dmu_dX = self.model.posterior_mean_gradient(X)
+                valX = np.reshape(np.matmul(parameter, muX), (X.shape[0],1))
+                dval_dX = np.tensordot(parameter, dmu_dX, axes=1)
+                return -valX, -dval_dX
+
         else:
-            def aux_func(X):
+            def val_func(X):
                 N = 2
                 X = np.atleast_2d(X)
                 mu, var = self.model.predict(X)
                 output = np.zeros((len(X),1))
                 sample = np.zeros(self.model.output_dim)
-                for i in range(0,len(X)):
-                    for n in range(0,N):
+                for i in range(len(X)):
+                    for n in range(N):
                         Z = np.random.normal(size=self.model.output_dim)
                         sample = mu[:,i,0] + np.multiply(np.sqrt(var[:,i,0]),Z)
                         output[i,0] += self.utility.eval_func(parameter,sample)
                     output[i,0] = output[i,0]/N
                 return -output
         
-        argmax = self.acquisition.optimizer.optimize_inner_func(aux_func)[0]
+        argmax = self.acquisition.optimizer.optimize_inner_func(f=val_func, f_df=val_func_with_gradient)[0]
         #print(3)
         #print(argmax)
         #print(self.model.predict(argmax))
@@ -131,9 +137,9 @@ class ma_BO(object):
         :param max_iter: exploration horizon, or number of acquisitions. If nothing is provided optimizes the current acquisition.
         :param max_time: maximum exploration horizon in seconds.
         :param eps: minimum distance between two consecutive x's to keep running the model.
-        :param verbosity: flag to print the optimization results after each iteration (default, False).
-        :param report_file: filename of the file where the results of the optimization are saved (default, None).
         :param context: fixes specified variables to a particular context (values) for the optimization run (default, None).
+        :param verbosity: flag to print the optimization results after each iteration (default, False).
+        :param evaluations_file: filename of the file where the evaluated points and corresponding evaluations are saved (default, None).
         """
 
         if self.objective is None:
@@ -190,9 +196,9 @@ class ma_BO(object):
                 break
             
             value_so_far.append(self._value_so_far())
-            print(2)
-            print(self.suggested_sample)
-            print(self.model.predict(self.suggested_sample))
+            #print(2)
+            #print(self.suggested_sample)
+            #print(self.model.predict(self.suggested_sample))
             self.model.get_model_parameters_names()
             self.model.get_model_parameters()
 

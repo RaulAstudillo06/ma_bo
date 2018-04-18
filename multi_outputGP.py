@@ -81,7 +81,7 @@ class multi_outputGP(object):
 
     def predict(self,  X,  full_cov=False):
         """
-        Predictions with the model. Returns posterior means and standard deviations at X. Note that this is different in GPy where the variances are given.
+        Predictions with the model. Returns posterior means and variance at X.
         """
         X = np.atleast_2d(X)
         m = np.empty((self.output_dim,X.shape[0]))
@@ -94,7 +94,7 @@ class multi_outputGP(object):
     
     def posterior_mean(self,  X):
         """
-        Predictions with the model. Returns posterior means and standard deviations at X. Note that this is different in GPy where the variances are given.
+        Predictions with the model. Returns posterior mean at X.
         """
         X = np.atleast_2d(X)
         m = np.empty((self.output_dim,X.shape[0]))
@@ -102,9 +102,17 @@ class multi_outputGP(object):
           m[j,:]  = self.output[j].posterior_mean(X)[:,0]
         return m
     
+    
+    def posterior_mean_at_evaluated_points(self):
+        """
+        Returns posterior mean at the points that have been already evaluated.
+        """
+        return self.posterior_mean(self.output[0].model.X)
+    
+    
     def posterior_variance(self,  X):
         """
-        Predictions with the model. Returns posterior means and standard deviations at X. Note that this is different in GPy where the variances are given.
+        Returns posterior variance at X.
         """
         X = np.atleast_2d(X)
         var = np.empty((self.output_dim,X.shape[0]))
@@ -176,11 +184,11 @@ class multi_outputGP(object):
         Computes dmu/dX(X).
         :param X:  input observations
         """
-        dvarX_dX = np.empty((self.output_dim,X.shape[0],X.shape[1]))
+        dvar_dX = np.empty((self.output_dim,X.shape[0],X.shape[1]))
         for j in range(0,self.output_dim):
-            dvarX_dX[j,:,:] = self.output[j].posterior_variance_gradient(X)
+            dvar_dX[j,:,:] = self.output[j].posterior_variance_gradient(X)
             
-        return dvarX_dX
+        return dvar_dX
     
     
     def posterior_covariance_gradient(self, X, x2):

@@ -68,7 +68,6 @@ class AcquisitionOptimizer(object):
            
         ## -- Select the anchor points (with context)
         anchor_points = anchor_points_generator.get(duplicate_manager=duplicate_manager, context_manager=self.context_manager)
-        #print(anchor_points)
         
         ## --- Applying local optimizers at the anchor points and update bounds of the optimizer (according to the context)
         optimized_points = [apply_optimizer(self.optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]          
@@ -106,17 +105,9 @@ class AcquisitionOptimizer(object):
         
         ## --- Applying local optimizers at the anchor points and update bounds of the optimizer (according to the context)
         optimized_points = [apply_optimizer(self.inner_optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]
-        #if f_df is not None:
-            #print(1)
-            #for a in optimized_points:
-                #fa, dfa = f_df(a[0])
-                #print('a')
-                #print(a[0])
-                #print(fa)
-                #print(dfa)
-        x_min, fx_min = min(optimized_points, key=lambda t:t[1])
 
-        #x_min, fx_min = min([apply_optimizer(self.optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points], key=lambda t:t[1])                   
+        x_min, fx_min = min(optimized_points, key=lambda t:t[1])
+               
         return x_min, fx_min
 
 

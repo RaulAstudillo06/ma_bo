@@ -46,7 +46,7 @@ class OptSgd(Optimizer):
         for t  in range(self.maxiter):
             print(t)
             x = x - 0.3*np.power(t+1,-0.7)*dfx
-            print(x)
+            #print(x)
             for k in range(x.shape[1]):
                 if x[0,k] < self.bounds[k][0]:
                     x[0,k] = self.bounds[k][0]
@@ -55,9 +55,9 @@ class OptSgd(Optimizer):
                     
             f_previous = fx       
             fx, dfx = f_df(x)
-            #print(dfx)
+            print(dfx)
             #print(fx)
-            #h = 1e-5
+            #h = 1e-7
             #x[0,0] +=h
             #f_aux = f(x)
             #print((f_aux-fx)/h)
@@ -78,7 +78,7 @@ class OptLbfgs(Optimizer):
     '''
     Wrapper for l-bfgs-b to use the true or the approximate gradients.
     '''
-    def __init__(self, bounds, maxiter=40):
+    def __init__(self, bounds, maxiter=50):
         super(OptLbfgs, self).__init__(bounds)
         self.maxiter = maxiter
 

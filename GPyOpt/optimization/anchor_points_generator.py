@@ -56,7 +56,6 @@ class AnchorPointsGenerator(object):
         #X = X[non_duplicate_anchor_point_indexes,:]
 
         scores = self.get_anchor_point_scores(X)
-        #print(scores)
 
         anchor_points = X[np.argsort(scores)[:min(len(scores),num_anchor)], :]
         #print(anchor_points)
@@ -94,6 +93,7 @@ class ObjectiveAnchorPointsGenerator(AnchorPointsGenerator):
 
     def get_anchor_point_scores(self, X):
         return self.objective(X).flatten()
+    
 
 class RandomAnchorPointsGenerator(AnchorPointsGenerator):
 

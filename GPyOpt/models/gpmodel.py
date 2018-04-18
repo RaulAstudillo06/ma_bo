@@ -22,7 +22,7 @@ class GPModel(BOModel):
     :param verbose: print out the model messages (default, False).
     :param ARD: whether ARD is used in the kernel (default, False).
 
-    .. Note:: This model does Maximum likelihood estimation of the hyper-parameters.
+    .. Note:: 
 
     """
 
@@ -45,7 +45,7 @@ class GPModel(BOModel):
 
     @staticmethod
     def fromConfig(config):
-        return GPModel2(**config)
+        return GPModel(**config)
 
     def _create_model(self, X, Y):
         """
@@ -188,14 +188,14 @@ class GPModel(BOModel):
     
     def posterior_mean_gradient(self,  X):
         """
-        Computes dmu/dX(X).
+        Computes the gradient of the posterior mean at X.
         :param X:  input observations
         """
         return self.model.posterior_mean_gradient(X)
     
     def posterior_variance_gradient(self,  X):
         """
-        Computes dvar/dX(X).
+        Computes the gradient of the posterior variance at X.
         :param X:  input observations
         """
         return self.model.posterior_variance_gradient(X)
@@ -211,7 +211,7 @@ class GPModel(BOModel):
     
     def posterior_covariance_gradient_partially_precomputed(self, X, x2):
         """
-        Compute the derivatives of the posterior covariance K^(n)(X,x2) with respect to X.
+        Compute the derivatives of the posterior covariance, K^(n)(X,x2), with respect to X.
         """
         return self.model.posterior_covariance_gradient_partially_precomputed( X, x2)
     
@@ -302,7 +302,7 @@ class GPModel2(BOModel):
     def fromConfig(config):
         return GPModel(**config)
 
-    def _create_model(self, X, Y):
+    def _create_model2(self, X, Y):
         """
         Creates the model given some input data X and Y.
         """
