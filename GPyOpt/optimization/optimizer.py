@@ -57,21 +57,69 @@ class OptSgd(Optimizer):
             fx, dfx = f_df(x)
             print(dfx)
             #print(fx)
-            #h = 1e-7
-            #x[0,0] +=h
-            #f_aux = f(x)
-            #print((f_aux-fx)/h)
-            #x[0,0] -=h
-            #x[0,1] +=h
-            #f_aux = f(x)
-            #print((f_aux-fx)/h)
-            #x[0,1] -=h          
+            h = 1e-7
+            x[0,0] +=h
+            f_aux = f(x)
+            print((f_aux-fx)/h)
+            x[0,0] -=h
+            x[0,1] +=h
+            f_aux = f(x)
+            print((f_aux-fx)/h)
+            x[0,1] -=h          
             if np.absolute(fx - f_previous) < 1e-5:
                 break       
         
         x = np.atleast_2d(x)
         fx = np.atleast_2d(fx)
         return x, fx
+    
+    
+class OptADAM(Optimizer):
+    '''
+    ADAM algorithm.
+    '''
+    def __init__(self, bounds, maxiter=50):
+        super(OptADAM, self).__init__(bounds)
+        self.maxiter = maxiter
+
+    def optimize(self, x0, f=None, df=None, f_df=None):
+        """
+        :param x0: initial point for a local optimizer.
+        :param f: function to optimize.
+        :param df: gradient of the function to optimize.
+        :param f_df: returns both the function to optimize and its gradient.
+        """
+        x = x0
+        alpha = 0.001
+        beta1 = 0.9
+        beta2 = 0.999
+        eps = 1e-8
+        m = 0*x0
+        v = 0*x0
+        beta1_power = 1.
+        beta2_power = 1.
+
+        for t  in range(1, self.maxiter + 1):
+            print(t)
+            f, g = f_df(x)
+            m = beta1*m +(1-beta1)*g
+            v = beta2*v +(1-beta2)*np.square(g)
+            beta1_power = beta1_power*beta1
+            m_hat = m/(1-beta1_power)
+            beta2_power = beta2_power*beta2
+            v_hat = v/(1-beta2_power)
+            x = x - alpha*np.divide(m_hat,np.sqrt(v_hat)+eps)
+            for k in range(x.shape[1]):
+                if x[0,k] < self.bounds[k][0]:
+                    x[0,k] = self.bounds[k][0]
+                elif x[0,k] > self.bounds[k][1]:
+                    x[0,k] = self.bounds[k][1]
+            print(f)        
+            print(g)   
+        
+        x = np.atleast_2d(x)
+        f = np.atleast_2d(f)
+        return x, f
     
 
 class OptLbfgs(Optimizer):
@@ -295,6 +343,9 @@ def choose_optimizer(optimizer_name, bounds):
         
         elif optimizer_name == 'sgd':
             optimizer = OptSgd(bounds)
+            
+        elif optimizer_name == 'adam':
+            optimizer = OptADAM(bounds)
 
         elif optimizer_name == 'DIRECT':
             optimizer = OptDirect(bounds)

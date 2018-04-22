@@ -29,7 +29,7 @@ class GPModel(BOModel):
     MCMC_sampler = True
     analytical_gradient_prediction = True  # --- Needed in all models to check is the gradients of acquisitions are computable.
 
-    def __init__(self, kernel=None, noise_var=None, exact_feval=False, n_samples = 5, n_burnin = 100, subsample_interval = 10, step_size = 1e-1, leapfrog_steps=20, verbose=False, ARD=False):
+    def __init__(self, kernel=None, noise_var=None, exact_feval=False, n_samples = 1, n_burnin = 100, subsample_interval = 10, step_size = 1e-1, leapfrog_steps=20, verbose=False, ARD=False):
         self.kernel = kernel
         self.noise_var = noise_var
         self.exact_feval = exact_feval

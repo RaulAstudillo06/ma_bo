@@ -10,9 +10,8 @@ from scipy import linalg
 from scipy.linalg import lapack, blas
 from .config import config
 import logging
-
-#if config.getboolean('cython', 'working'):
-    #from . import linalg_cython
+if config.getboolean('cython', 'working'):
+    from . import linalg_cython
 
 def force_F_ordered_symmetric(A):
     """

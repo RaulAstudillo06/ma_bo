@@ -506,14 +506,14 @@ class GP(Model):
         """
         if kern is None:
             kern = self.kern
-
+        one = np.ones((1,1))   
         x2 = np.atleast_2d(x2)
         factor = np.matmul(kern.K(x2,self._predictive_variable),self.posterior.woodbury_inv)
         tmp = np.empty((X.shape[0],self._predictive_variable.shape[0],X.shape[1]))
         for i in range(self._predictive_variable.shape[0]):
-            tmp[:,i,:] = kern.gradients_X(1,X,np.atleast_2d(self._predictive_variable[i]))
+            tmp[:,i,:] = kern.gradients_X(one,X,np.atleast_2d(self._predictive_variable[i]))
         
-        pos_cov_grad = kern.gradients_X(1, X, x2)  - np.squeeze(np.matmul(factor,tmp))
+        pos_cov_grad = kern.gradients_X(one, X, x2)  - np.squeeze(np.matmul(factor,tmp))
         return pos_cov_grad
     
     
@@ -522,11 +522,12 @@ class GP(Model):
         Compute the derivatives of the posterior covariance K^(n)(X,x2) with respect to X.
         """
         kern = self.kern
+        one = np.ones((1,1))
         tmp = np.empty((X.shape[0],self._predictive_variable.shape[0],X.shape[1]))
         for i in range(self._predictive_variable.shape[0]):
-            tmp[:,i,:] = kern.gradients_X(1,X,np.atleast_2d(self._predictive_variable[i]))
+            tmp[:,i,:] = kern.gradients_X(one,X,np.atleast_2d(self._predictive_variable[i]))
 
-        return kern.gradients_X(1, X, x2)  - np.squeeze(np.matmul(self.partial_precomp_dcov,tmp))
+        return kern.gradients_X(one, X, x2)  - np.squeeze(np.matmul(self.partial_precomp_dcov,tmp))
     
 
     def predictive_gradients(self, Xnew, kern=None):

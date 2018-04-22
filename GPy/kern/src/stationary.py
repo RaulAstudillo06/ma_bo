@@ -11,8 +11,6 @@ from ... import util
 from ...util.config import config # for assesing whether to use cython
 from paramz.caching import Cache_this
 from paramz.transformations import Logexp
-#import pyximport
-#pyximport.install()
 try:
     from . import stationary_cython
 except ImportError:

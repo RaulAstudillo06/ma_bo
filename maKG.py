@@ -42,6 +42,7 @@ class maKG(AcquisitionBase):
         if full_support:
             acqX = np.matmul(marginal_acqX, utility_dist)
         acqX = np.reshape(acqX, (X.shape[0],1))
+        #print(acqX)
         return acqX
     
     
@@ -52,11 +53,12 @@ class maKG(AcquisitionBase):
         n_h = 1 # Number of GP hyperparameters samples.
         #self.model.restart_hyperparameters_counter()
         gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
-        n_z = 2 # number of samples of Z
+        n_z = 10 # number of samples of Z
+        np.random.seed(11)
         Z_samples = np.random.normal(size=n_z)
         
         for h in gp_hyperparameters_samples:
-            self.model.set_hyperparameters(h)
+            #self.model.set_hyperparameters(h)
             varX = self.model.posterior_variance(X)
             for i in range(0,len(X)):
                 x = np.atleast_2d(X[i])
@@ -103,6 +105,7 @@ class maKG(AcquisitionBase):
     def _compute_acq_withGradients(self, X):
         """
         """
+        #print(self._compute_acq(X))
         full_support = True # If true, the full support of the utility function distribution will be used when computing the acquisition function value.
         X =np.atleast_2d(X)
         if full_support:
@@ -115,6 +118,9 @@ class maKG(AcquisitionBase):
             dacq_dX = np.tensordot(marginal_dacq_dX, utility_dist,1)
         acqX = np.reshape(acqX,(X.shape[0], 1))
         dacq_dX = np.reshape(dacq_dX, X.shape)
+        print('test')
+        print(acqX)
+        print(dacq_dX)
         return acqX, dacq_dX
         
         
@@ -125,11 +131,12 @@ class maKG(AcquisitionBase):
         marginal_dacq_dX =  np.zeros((X.shape[0],X.shape[1],len(utility_params_samples)))
         n_h = 1 # Number of GP hyperparameters samples.
         gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
-        n_z= 2 # Number of samples of Z.
+        n_z= 10 # Number of samples of Z.
+        np.random.seed(11)
         Z_samples = np.random.normal(size=n_z)
         
         for h in gp_hyperparameters_samples:
-            self.model.set_hyperparameters(h)
+            #self.model.set_hyperparameters(h)
             varX = self.model.posterior_variance(X)
             dvar_dX = self.model.posterior_variance_gradient(X)
             for i in range(0,len(X)):
@@ -176,7 +183,7 @@ class maKG(AcquisitionBase):
                         cov_opt = self.model.posterior_covariance_between_points_partially_precomputed(x_opt,x)[:,0,0]
                         dcov_opt_dx = self.model.posterior_covariance_gradient(x,x_opt)[:,0,:]
                         b = np.sqrt(np.dot(aux,np.square(cov_opt)))
-                        marginal_dacq_dX[i,:,l] = 0.5*Z*np.reciprocal(b)*np.matmul(aux2,(2*np.multiply(varX[:,i]*cov_opt,dcov_opt_dx.T) - np.multiply(np.square(cov_opt),dvar_dX[:,i,:].T)).T)
+                        marginal_dacq_dX[i,:,l] += 0.5*Z*np.reciprocal(b)*np.matmul(aux2,(2*np.multiply(varX[:,i]*cov_opt,dcov_opt_dx.T) - np.multiply(np.square(cov_opt),dvar_dX[:,i,:].T)).T)
         
         marginal_acqX = marginal_acqX/(n_h*n_z)            
         marginal_dacq_dX = marginal_dacq_dX/(n_h*n_z)

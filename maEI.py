@@ -64,14 +64,14 @@ class maEI(AcquisitionBase):
              acqX = np.matmul(marginal_acqX, utility_dist)
              dacq_dX = np.tensordot(marginal_dacq_dX, utility_dist, 1)
         acqX = np.reshape(acqX,(X.shape[0], 1))
-        dacq_dX = np.reshape(dacq_dX, X.shape)
+        #dacq_dX = np.reshape(dacq_dX, X.shape)
         return acqX, dacq_dX
     
     
     def _marginal_acq(self, X, utility_params_samples):
         L = len(utility_params_samples)
         marginal_acqX = np.zeros((X.shape[0],L))
-        n_h = 5 # Number of GP hyperparameters samples.
+        n_h = 10 # Number of GP hyperparameters samples.
         gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
         for h in gp_hyperparameters_samples:
             self.model.set_hyperparameters(h)
@@ -92,7 +92,7 @@ class maEI(AcquisitionBase):
         L = len(utility_params_samples)
         marginal_acqX = np.zeros((X.shape[0],L))
         marginal_dacq_dX = np.zeros((X.shape[0], X.shape[1], L))
-        n_h = 5 # Number of GP hyperparameters samples.
+        n_h = 10 # Number of GP hyperparameters samples.
         gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
         for h in gp_hyperparameters_samples:
             self.model.set_hyperparameters(h)

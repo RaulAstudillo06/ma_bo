@@ -82,7 +82,8 @@ class ma_BO(object):
             a = np.reshape(self.objective.evaluate(self._marginal_max_value_so_far(support[i]))[0],(self.objective.output_dim,))
             #print(a)
             output += self.utility.eval_func(support[i],a)*utility_dist[i]
-        #print(output)
+        print('optimal value so far')    
+        print(output)
         return output
     
     

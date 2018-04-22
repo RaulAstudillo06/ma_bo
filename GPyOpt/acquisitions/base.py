@@ -35,8 +35,9 @@ class AcquisitionBase(object):
         Takes an acquisition and weights it so the domain and cost are taken into account.
         """
         f_acqu = self._compute_acq(x)
-        cost_x, _ = self.cost_withGradients(x)
-        return -(f_acqu*self.space.indicator_constraints(x))/cost_x
+        #cost_x, _ = self.cost_withGradients(x)
+        #return -(f_acqu*self.space.indicator_constraints(x))/cost_x
+        return -f_acqu
 
 
     def acquisition_function_withGradients(self, x):
@@ -44,10 +45,15 @@ class AcquisitionBase(object):
         Takes an acquisition and it gradient and weights it so the domain and cost are taken into account.
         """
         f_acqu,df_acqu = self._compute_acq_withGradients(x)
-        cost_x, cost_grad_x = self.cost_withGradients(x)
-        f_acq_cost = f_acqu/cost_x
-        df_acq_cost = (df_acqu*cost_x - f_acqu*cost_grad_x)/(cost_x**2)
-        return -f_acq_cost*self.space.indicator_constraints(x), -df_acq_cost*self.space.indicator_constraints(x)
+        #print(df_acqu)
+        #cost_x, cost_grad_x = self.cost_withGradients(x)
+        #print(cost_x)
+        #print(cost_grad_x)
+        #f_acq_cost = f_acqu/cost_x
+        #df_acq_cost = (df_acqu*cost_x - f_acqu*cost_grad_x)/(cost_x**2)
+        #print(df_acq_cost)
+        #return -f_acq_cost*self.space.indicator_constraints(x), -df_acq_cost*self.space.indicator_constraints(x)
+        return -f_acqu, -df_acqu
 
     def optimize(self, duplicate_manager=None):
         """
