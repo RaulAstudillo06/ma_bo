@@ -55,7 +55,7 @@ class GPModel(BOModel):
         # --- define kernel
         self.input_dim = X.shape[1]
         if self.kernel is None:
-            kern = GPy.kern.RBF(self.input_dim, variance=1.)
+            kern = GPy.kern.Linear(self.input_dim, variances=1.)
         else:
             kern = self.kernel
             self.kernel = None
