@@ -197,6 +197,9 @@ class Stationary(Kern):
         self.variance.gradient = np.sum(self.K(X, X2)* dL_dK)/self.variance
 
         #now the lengthscale gradient(s)
+        #print('test')
+        #print(self.dK_dr_via_X(X, X2).shape)
+        #print(dL_dK.shape)
         dL_dr = self.dK_dr_via_X(X, X2) * dL_dK
         if self.ARD:
 

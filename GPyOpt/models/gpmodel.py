@@ -29,7 +29,7 @@ class GPModel(BOModel):
     MCMC_sampler = True
     analytical_gradient_prediction = True  # --- Needed in all models to check is the gradients of acquisitions are computable.
 
-    def __init__(self, kernel=None, noise_var=None, exact_feval=False, n_samples = 1, n_burnin = 100, subsample_interval = 10, step_size = 1e-1, leapfrog_steps=20, verbose=False, ARD=False):
+    def __init__(self, kernel=None, noise_var=None, exact_feval=False, n_samples = 10, n_burnin = 100, subsample_interval = 10, step_size = 1e-1, leapfrog_steps=20, verbose=False, ARD=False):
         self.kernel = kernel
         self.noise_var = noise_var
         self.exact_feval = exact_feval
@@ -55,7 +55,7 @@ class GPModel(BOModel):
         # --- define kernel
         self.input_dim = X.shape[1]
         if self.kernel is None:
-            kern = GPy.kern.Linear(self.input_dim, variances=1.)
+            kern = GPy.kern.SE(self.input_dim, variance=1.)
         else:
             kern = self.kernel
             self.kernel = None
@@ -68,9 +68,11 @@ class GPModel(BOModel):
         self.model.kern.set_prior(GPy.priors.Gamma.from_EV(2.,4.))
         self.model.likelihood.variance.set_prior(GPy.priors.Gamma.from_EV(2.,4.))
 
-        # --- Restrict variance if exact evaluations of the objective
+        # --- Restrict variance if exact evaluations of the objective or known variance
         if self.exact_feval:
             self.model.Gaussian_noise.constrain_fixed(1e-6, warning=False)
+        elif self.noise_var is not None:
+            self.model.Gaussian_noise.constrain_fixed(self.noise_var, warning=False)
         else:
             self.model.Gaussian_noise.constrain_positive(warning=False)
             
@@ -84,11 +86,6 @@ class GPModel(BOModel):
             self._create_model(X_all, Y_all)
         else:
             self.model.set_XY(X_all, Y_all)
-        
-        if self.model is None:
-            self._create_model(X_all, Y_all)
-        else:
-            self.model.set_XY(X_all, Y_all)
 
         # update the model generating hmc samples
         self.model.optimize(max_iters = 200)
@@ -96,6 +93,7 @@ class GPModel(BOModel):
         self.hmc = GPy.inference.mcmc.HMC(self.model, stepsize=self.step_size)
         ss = self.hmc.sample(num_samples=self.n_burnin + self.n_samples* self.subsample_interval, hmc_iters=self.leapfrog_steps)
         self.hmc_samples = ss[self.n_burnin::self.subsample_interval]
+        #print(self.hmc_samples)
 
         
     def get_hyperparameters_samples(self, n_samples=1):
@@ -141,6 +139,16 @@ class GPModel(BOModel):
         v = np.clip(self.model.posterior_variance(X), 1e-10, np.inf)
         return v
     
+    
+    def posterior_variance_noiseless(self, X):
+        """
+        Predictions with the model. Returns posterior means and standard deviations at X. Note that this is different in GPy where the variances are given.
+        """
+        if X.ndim==1: X = X[None,:]
+        v = np.clip(self.model.posterior_variance_noiseless(X), 1e-10, np.inf)
+        return v
+    
+    
     def partial_precomputation_for_covariance(self, X):
         """
         Computes the posterior covariance between points.
@@ -182,7 +190,7 @@ class GPModel(BOModel):
 
     def get_fmin(self):
         """
-        Returns the location where the posterior mean is takes its minimal value.
+        Returns the location where the posterior mean takes its minimal value.
         """
         return self.model.predict(self.model.X)[0].min()
     

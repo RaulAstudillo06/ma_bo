@@ -71,7 +71,7 @@ class maEI(AcquisitionBase):
     def _marginal_acq(self, X, utility_params_samples):
         L = len(utility_params_samples)
         marginal_acqX = np.zeros((X.shape[0],L))
-        n_h = 10 # Number of GP hyperparameters samples.
+        n_h = 5 # Number of GP hyperparameters samples.
         gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
         for h in gp_hyperparameters_samples:
             self.model.set_hyperparameters(h)
@@ -82,7 +82,7 @@ class maEI(AcquisitionBase):
                 for i in range(X.shape[0]):
                     mu = np.dot(utility_params_samples[l], meanX[:,i])
                     sigma = np.sqrt(np.dot(np.square(utility_params_samples[l]), varX[:,i]))
-                    marginal_acqX[i,l ] = (mu-current_best)*norm.cdf(mu, loc=current_best, scale=sigma) + sigma*norm.pdf(mu, loc=current_best, scale=sigma)
+                    marginal_acqX[i,l] += (mu-current_best)*norm.cdf(mu, loc=current_best, scale=sigma) + sigma*norm.pdf(mu, loc=current_best, scale=sigma)
                     
         marginal_acqX = marginal_acqX/n_h
         return marginal_acqX
@@ -92,7 +92,7 @@ class maEI(AcquisitionBase):
         L = len(utility_params_samples)
         marginal_acqX = np.zeros((X.shape[0],L))
         marginal_dacq_dX = np.zeros((X.shape[0], X.shape[1], L))
-        n_h = 10 # Number of GP hyperparameters samples.
+        n_h = 5 # Number of GP hyperparameters samples.
         gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
         for h in gp_hyperparameters_samples:
             self.model.set_hyperparameters(h)

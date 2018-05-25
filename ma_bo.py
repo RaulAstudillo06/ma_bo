@@ -13,10 +13,8 @@ from GPyOpt.util.duplicate_manager import DuplicateManager
 from GPyOpt.core.errors import InvalidConfigError
 from GPyOpt.core.task.cost import CostModel
 from GPyOpt.optimization.acquisition_optimizer import ContextManager
-try:
-    from GPyOpt.plotting.plots_bo import plot_acquisition, plot_convergence
-except:
-    pass
+from plotting_services import plot_convergence, plot_acquisition, integrated_plot
+from pathos.multiprocessing import ProcessingPool as Pool
 
 
 class ma_BO(object):
@@ -47,47 +45,70 @@ class ma_BO(object):
         self.model_update_interval = model_update_interval
         self.X = X_init
         self.Y = Y_init
+        self.historical_optimal_values = []
+        self.var_at_historical_optima = []
         self.cost = CostModel(cost)
         self.model_parameters_iterations = None
 
-    def suggest_next_locations(self, context = None, pending_X = None, ignored_X = None):
-        """
-        Run a single optimization step and return the next locations to evaluate the objective.
-        Number of suggested locations equals to batch_size.
-
-        :param context: fixes specified variables to a particular context (values) for the optimization run (default, None).
-        :param pending_X: matrix of input configurations that are in a pending state (i.e., do not have an evaluation yet) (default, None).
-        :param ignored_X: matrix of input configurations that the user black-lists, i.e., those configurations will not be suggested again (default, None).
-        """
-        self.model_parameters_iterations = None
-        self.num_acquisitions = 0
-        self.context = context
-        self._update_model(self.normalization_type)
-
-        suggested_locations = self._compute_next_evaluations(pending_zipped_X = pending_X, ignored_zipped_X = ignored_X)
-
-        return suggested_locations
     
-    
-    def _value_so_far(self):
+    def _current_max_value(self):
         """
         Computes E_n[U(f(x_max))|f], where U is the utility function, f is the true underlying ojective function and x_max = argmax E_n[U(f(x))|U]. See
         function _marginal_max_value_so_far below.
         """
 
-        output = 0
+        val = 0
         support = self.utility.parameter_dist.support
         utility_dist = self.utility.parameter_dist.prob_dist
         for i in range(len(support)):
-            a = np.reshape(self.objective.evaluate(self._marginal_max_value_so_far(support[i]))[0],(self.objective.output_dim,))
+            marginal_argmax = self._current_marginal_argmax(support[i])
+            marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.objective.output_dim,))
             #print(a)
-            output += self.utility.eval_func(support[i],a)*utility_dist[i]
-        print('optimal value so far')    
-        print(output)
-        return output
+            val += self.utility.eval_func(support[i],marginal_max_val)*utility_dist[i]
+        print('Current optimal value')    
+        print(val)
+        return val
     
     
-    def _marginal_max_value_so_far(self, parameter):
+    def _current_max_value_and_var(self):
+        val = 0
+        var = 0
+        support = self.utility.parameter_dist.support
+        utility_dist = self.utility.parameter_dist.prob_dist
+        for i in range(len(support)):
+            marginal_argmax = self._current_marginal_argmax(support[i])
+            marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.objective.output_dim,))
+            var_marginal_argmax = np.reshape(self.model.posterior_variance_noiseless(marginal_argmax),(self.objective.output_dim,))
+            var += self.utility.eval_func(support[i],var_marginal_argmax)*utility_dist[i]
+            val += self.utility.eval_func(support[i],marginal_max_val)*utility_dist[i]
+        print('Current optimal value')    
+        print(val)
+        return val, var
+    
+    
+    def _current_max_value2(self):
+        """
+        Computes E_n[U(f(x_max))|f], where U is the utility function, f is the true underlying ojective function and x_max = argmax E_n[U(f(x))|U]. See
+        function _marginal_max_value_so_far below.
+        """
+        pool = Pool(4)
+        val = sum(pool.map(self._marginal_weighted_max_value, list(range(len(self.utility.parameter_dist.support)))))
+        #pool.close()
+        print('Current optimal value')    
+        print(val)
+        return val
+    
+    
+    def _marginal_weighted_max_value(self, index):
+        support = self.utility.parameter_dist.support
+        utility_dist = self.utility.parameter_dist.prob_dist
+        marginal_argmax = self._current_marginal_argmax(support[index])
+        marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.objective.output_dim,))
+        return self.utility.eval_func(support[index],marginal_max_val)*utility_dist[index]
+        
+    
+    
+    def _current_marginal_argmax(self, parameter):
         """
         Computes argmax E_n[U(f(x))|U] (The abuse of notation can be misleading; note that the expectation is with
         respect to the posterior distribution on f after n evaluations)
@@ -131,7 +152,7 @@ class ma_BO(object):
         return argmax
                 
           
-    def run_optimization(self, max_iter = 1, max_time = np.inf,  eps = 1e-8, context = None, verbosity=False, evaluations_file = None):
+    def run_optimization(self, max_iter=1, parallel=True, plot=True,  max_time=np.inf,  eps=1e-8, context=None, verbosity=False, evaluations_file = None):
         """
         Runs Bayesian Optimization for a number 'max_iter' of iterations (after the initial exploration data)
 
@@ -167,13 +188,13 @@ class ma_BO(object):
             self.max_iter = max_iter
             self.max_time = max_time
 
-        # --- Initial function evaluation and model fitting
+        # --- Initial function evaluation
         if self.X is not None and self.Y is None:
             self.Y, cost_values = self.objective.evaluate(self.X)
             if self.cost.cost_type == 'evaluation_time':
                 self.cost.update_cost_model(self.X, cost_values)
-    
-        #self.model.updateModel(self.X,self.Y)
+        # --- Initialize model
+        self.model.updateModel(self.X,self.Y)
 
         # --- Initialize iterations and running time
         self.time_zero = time.time()
@@ -181,27 +202,12 @@ class ma_BO(object):
         self.num_acquisitions = 0
         self.suggested_sample = self.X
         self.Y_new = self.Y
-        value_so_far = []
+
 
         # --- Initialize time cost of the evaluations
-        while (self.max_time > self.cum_time):
-            # --- Update model
-            #try:
-                #self._update_model(self.normalization_type)
-            #except np.linalg.linalg.LinAlgError:
-                #break
-                    
-            self._update_model()
-
-            if not ((self.num_acquisitions < self.max_iter) and (self._distance_last_evaluations() > self.eps)):
-                break
+        while (self.max_time > self.cum_time) and (self.num_acquisitions < self.max_iter):
             
-            value_so_far.append(self._value_so_far())
-            #print(2)
-            #print(self.suggested_sample)
-            #print(self.model.predict(self.suggested_sample))
-            self.model.get_model_parameters_names()
-            self.model.get_model_parameters()
+            #if not ((self.num_acquisitions < self.max_iter) and (self._distance_last_evaluations() > self.eps)):
 
             self.suggested_sample = self._compute_next_evaluations()
 
@@ -210,6 +216,14 @@ class ma_BO(object):
 
             # --- Evaluate *f* in X, augment Y and update cost function (if needed)
             self.evaluate_objective()
+            # --- Update model
+            if (self.num_acquisitions%self.model_update_interval)==0:
+                self._update_model()
+            self.model.get_model_parameters_names()
+            self.model.get_model_parameters()
+            current_max_val, var_at_current_max = self._current_max_value_and_var()
+            self.historical_optimal_values.append(current_max_val)
+            self.var_at_historical_optima.append(var_at_current_max)
 
             # --- Update current evaluation time and function evaluations
             self.cum_time = time.time() - self.time_zero
@@ -218,14 +232,16 @@ class ma_BO(object):
             if verbosity:
                 print("num acquisition: {}, time elapsed: {:.2f}s".format(
                     self.num_acquisitions, self.cum_time))
+        if plot:
+            self.plot_convergence(confidence_interval=True)
 
         # --- Print the desired result in files
         #if self.evaluations_file is not None:
             #self.save_evaluations(self.evaluations_file)
 
         #file = open('test_file.txt','w')                  
-        plt.plot(range(self.num_acquisitions),value_so_far)
-        plt.show()
+        #plt.plot(range(self.num_acquisitions),value_so_far)
+        #plt.show()
         #np.savetxt('test_file.txt',value_so_far)
 
 
@@ -233,12 +249,12 @@ class ma_BO(object):
         """
         Evaluates the objective
         """
-        print(1)
+        print('Suggested point to evaluate')
         print(self.suggested_sample)
-        self.Y_new, cost_new = self.objective.evaluate(self.suggested_sample)
+        self.Y_new, cost_new = self.objective.evaluate_w_noise(self.suggested_sample)
         self.cost.update_cost_model(self.suggested_sample, cost_new)   
         for j in range(self.objective.output_dim):
-            print(self.Y_new[j])
+            #print(self.Y_new[j])
             self.Y[j] = np.vstack((self.Y[j],self.Y_new[j]))
 
 
@@ -267,17 +283,88 @@ class ma_BO(object):
         """
         Updates the model (when more than one observation is available) and saves the parameters (if available).
         """
-        if (self.num_acquisitions%self.model_update_interval)==0:
 
-            ### --- input that goes into the model (is unziped in case there are categorical variables)
-            X_inmodel = self.space.unzip_inputs(self.X)
-            Y_inmodel = list(self.Y)
-            
-            self.model.updateModel(X_inmodel, Y_inmodel)
+        ### --- input that goes into the model (is unziped in case there are categorical variables)
+        X_inmodel = self.space.unzip_inputs(self.X)
+        Y_inmodel = list(self.Y)
+        
+        self.model.updateModel(X_inmodel, Y_inmodel)
 
         ### --- Save parameters of the model
         #self._save_model_parameter_values()
+        
+    def one_step_assesment(self, attribute=0, context = None):
+        """
+        """
+        if self.objective is None:
+            raise InvalidConfigError("Cannot run the optimization loop without the objective function")
+        #self.model_parameters_iterations = None
+        self.context = context
+        # --- Initial function evaluation
+        if self.X is not None and self.Y is None:
+            self.Y, cost_values = self.objective.evaluate(self.X)
+            if self.cost.cost_type == 'evaluation_time':
+                self.cost.update_cost_model(self.X, cost_values)
+            self._update_model()
 
+        self.suggested_sample = self._compute_next_evaluations()
+
+        from copy import deepcopy
+        model_to_plot = deepcopy(self.model)
+        
+        integrated_plot(self.acquisition.space.get_bounds(),
+                                self.X.shape[1],
+                                model_to_plot,
+                                self.X,
+                                self.Y,
+                                self.acquisition.acquisition_function,
+                                self.suggested_sample,
+                                attribute,
+                                None)
+            
+        self.X = np.vstack((self.X,self.suggested_sample))
+        self.evaluate_objective()
+        self._update_model()
+        self.historical_optimal_values.append(self._current_max_value())
+        
+    def integrated_plot(self, attribute=0, filename=None):
+        """
+        Plots the model and the acquisition function.
+            if self.input_dim = 1: Plots data, mean and variance in one plot and the acquisition function in another plot
+            if self.input_dim = 2: as before but it separates the mean and variance of the model in two different plots
+        :param filename: name of the file where the plot is saved
+        """
+        from copy import deepcopy
+        model_to_plot = deepcopy(self.model)
+
+        integrated_plot(self.acquisition.space.get_bounds(),
+                                self.X.shape[1],
+                                model_to_plot,
+                                self.X,
+                                self.Y,
+                                self.acquisition.acquisition_function,
+                                self.suggest_next_locations(),
+                                attribute,
+                                filename)
+        
+    def plot_acquisition(self,filename=None):
+        """
+        Plots the acquisition function.
+        """
+
+        return plot_acquisition(self.acquisition.space.get_bounds(),
+                                self.X.shape[1],
+                                self.acquisition.acquisition_function,
+                                filename)
+    
+    def plot_convergence(self, confidence_interval=False, filename=None):
+        """
+        Makes twp plots to evaluate the convergence of the model:
+            plot 1: Iterations vs. distance between consecutive selected x's
+            plot 2: Iterations vs. the mean of the current model in the selected sample.
+        :param filename: name of the file where the plot is saved
+        """
+        return plot_convergence(self.historical_optimal_values, self.var_at_historical_optima, confidence_interval, filename)
 
     def get_evaluations(self):
         return self.X.copy(), self.Y.copy()

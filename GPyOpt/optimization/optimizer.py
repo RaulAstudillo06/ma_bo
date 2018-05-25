@@ -39,12 +39,13 @@ class OptSgd(Optimizer):
         :param df: gradient of the function to optimize.
         :param f_df: returns both the function to optimize and its gradient.
         """
-        print('sgd start')
+        #print('sgd start')
         x = x0
         #print(x)
         fx, dfx = f_df(x)
         for t  in range(self.maxiter):
-            print(t)
+            if t>48:
+                print(t)
             x = x - 0.3*np.power(t+1,-0.7)*dfx
             #print(x)
             for k in range(x.shape[1]):
@@ -55,19 +56,19 @@ class OptSgd(Optimizer):
                     
             f_previous = fx       
             fx, dfx = f_df(x)
-            print(dfx)
+            #print(dfx)
             #print(fx)
-            h = 1e-7
-            x[0,0] +=h
-            f_aux = f(x)
-            print((f_aux-fx)/h)
-            x[0,0] -=h
-            x[0,1] +=h
-            f_aux = f(x)
-            print((f_aux-fx)/h)
-            x[0,1] -=h          
-            if np.absolute(fx - f_previous) < 1e-5:
-                break       
+            #h = 1e-7
+            #x[0,0] +=h
+            #f_aux = f(x)
+            #print((f_aux-fx)/h)
+            #x[0,0] -=h
+            #x[0,1] +=h
+            #f_aux = f(x)
+            #print((f_aux-fx)/h)
+            #x[0,1] -=h          
+            #if np.absolute(fx - f_previous) < 1e-5:
+                #break       
         
         x = np.atleast_2d(x)
         fx = np.atleast_2d(fx)
@@ -100,7 +101,7 @@ class OptADAM(Optimizer):
         beta2_power = 1.
 
         for t  in range(1, self.maxiter + 1):
-            print(t)
+            #print(t)
             f, g = f_df(x)
             m = beta1*m +(1-beta1)*g
             v = beta2*v +(1-beta2)*np.square(g)
@@ -114,8 +115,8 @@ class OptADAM(Optimizer):
                     x[0,k] = self.bounds[k][0]
                 elif x[0,k] > self.bounds[k][1]:
                     x[0,k] = self.bounds[k][1]
-            print(f)        
-            print(g)   
+            #print(f)        
+            #print(g)   
         
         x = np.atleast_2d(x)
         f = np.atleast_2d(f)
@@ -236,7 +237,6 @@ def apply_optimizer(optimizer, x0, f=None, df=None, f_df=None, duplicate_manager
     """
 
     x0 = np.atleast_2d(x0)
-    
 
     ## --- Compute a new objective that inputs non context variables but that takes into account the values of the context ones.
     ## --- It does nothing if no context is passed
@@ -267,6 +267,55 @@ def apply_optimizer(optimizer, x0, f=None, df=None, f_df=None, duplicate_manager
     #suggested_fx = f(suggested_x)
 
     return suggested_x, suggested_fx
+
+
+def apply_optimizer_inner(optimizer, x0, f=None, df=None, f_df=None, duplicate_manager=None, context_manager=None, space=None):
+    """
+    :param x0: initial point for a local optimizer (x0 can be defined with or without the context included).
+    :param f: function to optimize.
+    :param df: gradient of the function to optimize.
+    :param f_df: returns both the function to optimize and its gradient.
+    :param duplicate_manager: logic to check for duplicate (always operates in the full space, context included)
+    :param context_manager: If provided, x0 (and the optimizer) operates in the space without the context
+    :param space: GPyOpt class design space.
+    """
+
+    x0 = np.atleast_2d(x0)
+    #print('apply inner opt')
+
+    ## --- Compute a new objective that inputs non context variables but that takes into account the values of the context ones.
+    ## --- It does nothing if no context is passed
+    #problem = OptimizationWithContext(x0=x0, f=f, df=df, f_df=f_df, context_manager=context_manager)
+
+    #if context_manager:
+        #print('context manager')
+        #add_context = lambda x : context_manager._expand_vector(x)
+    #else:
+        #add_context = lambda x : x
+
+    #if duplicate_manager and duplicate_manager.is_unzipped_x_duplicate(x0):
+        #raise ValueError("The starting point of the optimizer cannot be a duplicate.")
+
+    ## --- Optimize point
+    #optimized_x, suggested_fx = optimizer.optimize(problem.x0_nocontext, problem.f_nocontext, problem.df_nocontext, problem.f_df_nocontext)
+        
+    ## --- Add context and round according to the type of variables of the design space
+    #suggested_x_with_context = add_context(optimized_x)
+    #suggested_x_with_context_rounded = space.round_optimum(suggested_x_with_context)
+
+    ## --- Run duplicate_manager
+    #if duplicate_manager and duplicate_manager.is_unzipped_x_duplicate(suggested_x_with_context_rounded):
+        #suggested_x, suggested_fx = x0, np.atleast_2d(f(x0))
+    #else:
+        #suggested_x, suggested_fx = suggested_x_with_context_rounded, f(suggested_x_with_context_rounded)
+    suggested_x, suggested_fx = optimizer.optimize(x0, f, df, f_df)
+    #suggested_fx = f(suggested_x)
+
+    return suggested_x, suggested_fx
+
+
+def optimize_anchor_points(id, optimizer, anchor_points, f=None, df=None, f_df=None, duplicate_manager=None, context_manager=None, space=None):
+    return [apply_optimizer(optimizer, a, f, df, f_df, duplicate_manager, context_manager, space) for a in anchor_points]
 
 
 class OptimizationWithContext(object):
