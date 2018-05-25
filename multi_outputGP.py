@@ -2,6 +2,8 @@
 
 import numpy as np
 import GPyOpt
+#from pathos.multiprocessing import ProcessingPool as Pool
+from multiprocessing import Process
 
 
 class multi_outputGP(object):
@@ -42,23 +44,60 @@ class multi_outputGP(object):
         else:
             self.ARD = ARD
             
-        
+        #self.X_all = [None]*output_dim
+        #self.Y_all = [None]*output_dim
         self.output = [None]*output_dim
-        for j in range(0,output_dim):
+        for j in range(output_dim):
             self.output[j] = GPyOpt.models.GPModel(kernel=self.kernel[j],noise_var=self.noise_var[j],exact_feval=self.exact_feval[j],ARD=self.ARD[j],verbose=False)
 
     #@staticmethod
     #def fromConfig(config):
         #return multi_outputGP(**config)
+        
+    def updateModel2(self, X_all, Y_all):
+        """
+        Updates the model with new observations.
+        """
+        self.Y_all = Y_all
+        for j in range(self.output_dim):
+            self.X_all[j] = np.copy(X_all)  
+        jobs = []   
+        for j in range(self.output_dim):
+            p = Process(target=self.updateModel_single_output, args=(j,))
+            jobs.append(p)
+            p.start()
+        for proc in jobs:
+            proc.join()
+        
+        print(self.output[0].predict(X_all[0]))
+    
 
+        
+    def updateModel3(self, X_all, Y_all):
+        """
+        Updates the model with new observations.
+        """
+        self.Y_all = Y_all
+        for j in range(self.output_dim):
+            self.X_all[j] = np.copy(X_all)
+        pool = Pool(4)
+        print(list(range(self.output_dim)))
+        pool.starmap(self.updateModel_single_output, [(0,),(1,)])
+        #pool.close()
+        #pool.join()
+        #print('finished!')    
 
     def updateModel(self, X_all, Y_all):
         """
         Updates the model with new observations.
         """
-        for j in range(0,self.output_dim):
+        for j in range(self.output_dim):
             self.output[j].updateModel(X_all,Y_all[j],None,None)
             
+            
+    def updateModel_single_output(self, index):
+        self.output[index].updateModel(self.X_all[index],self.Y_all[index],None,None)
+                  
             
     def get_hyperparameters_samples(self, n_samples=1):
         hyperparameters = [[None]*self.output_dim]*n_samples
@@ -96,7 +135,7 @@ class multi_outputGP(object):
         """
         Predictions with the model. Returns posterior mean at X.
         """
-        X = np.atleast_2d(X)
+        #X = np.atleast_2d(X)
         m = np.empty((self.output_dim,X.shape[0]))
         for j in range(self.output_dim):
           m[j,:]  = self.output[j].posterior_mean(X)[:,0]
@@ -114,11 +153,21 @@ class multi_outputGP(object):
         """
         Returns posterior variance at X.
         """
-        X = np.atleast_2d(X)
+        #X = np.atleast_2d(X)
         var = np.empty((self.output_dim,X.shape[0]))
         for j in range(self.output_dim):
             var[j,:] = self.output[j].posterior_variance(X)[:,0]
         return var
+  
+    
+    def posterior_variance_noiseless(self, X):
+        """
+        """
+        var = np.empty((self.output_dim,X.shape[0]))
+        for j in range(self.output_dim):
+            var[j,:] = self.output[j].posterior_variance_noiseless(X)[:,0]
+        return var
+   
     
     def partial_precomputation_for_covariance(self, X):
         """
@@ -175,7 +224,8 @@ class multi_outputGP(object):
         dmu_dX = np.empty((self.output_dim,X.shape[0],X.shape[1]))
         for j in range(0,self.output_dim):
             tmp = self.output[j].posterior_mean_gradient(X)
-            dmu_dX[j,:,:] = tmp[:,:,0]
+            dmu_dX[j,:,:] = tmp
+
         return dmu_dX
     
     
@@ -210,7 +260,7 @@ class multi_outputGP(object):
         :param x2:  input observation.
         """
         dK_dX = np.empty((self.output_dim,X.shape[0],X.shape[1]))
-        for j in range(0,self.output_dim):
+        for j in range(self.output_dim):
             dK_dX[j,:,:] = self.output[j].posterior_covariance_gradient_partially_precomputed(X, x2)
         return dK_dX
     

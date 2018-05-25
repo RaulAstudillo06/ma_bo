@@ -64,7 +64,7 @@ class maEI(AcquisitionBase):
              acqX = np.matmul(marginal_acqX, utility_dist)
              dacq_dX = np.tensordot(marginal_dacq_dX, utility_dist, 1)
         acqX = np.reshape(acqX,(X.shape[0], 1))
-        dacq_dX = np.reshape(dacq_dX, X.shape)
+        #dacq_dX = np.reshape(dacq_dX, X.shape)
         return acqX, dacq_dX
     
     
@@ -82,7 +82,7 @@ class maEI(AcquisitionBase):
                 for i in range(X.shape[0]):
                     mu = np.dot(utility_params_samples[l], meanX[:,i])
                     sigma = np.sqrt(np.dot(np.square(utility_params_samples[l]), varX[:,i]))
-                    marginal_acqX[i,l ] = (mu-current_best)*norm.cdf(mu, loc=current_best, scale=sigma) + sigma*norm.pdf(mu, loc=current_best, scale=sigma)
+                    marginal_acqX[i,l] += (mu-current_best)*norm.cdf(mu, loc=current_best, scale=sigma) + sigma*norm.pdf(mu, loc=current_best, scale=sigma)
                     
         marginal_acqX = marginal_acqX/n_h
         return marginal_acqX

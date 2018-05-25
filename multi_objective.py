@@ -25,17 +25,14 @@ class MultiObjective(Objective):
     def __init__(self, func, noise_var=None, objective_name=None):     
         self.func  = func
         self.output_dim  = len(self.func)
-        if noise_var is None:
-            self.noise_var = [1]*self.output_dim
-        else:
-            self.noise_var = noise_var
+        self.noise_var = noise_var
         if objective_name is None:
             self.objective_name = ['no_name']*self.output_dim
         else:
             self.objective_name = objective_name
             
         self.objective = [None]*self.output_dim
-        for j in range(0,self.output_dim):
+        for j in range(self.output_dim):
             self.objective[j] = GPyOpt.core.task.SingleObjective(func=self.func[j],objective_name=self.objective_name[j])
 
 
@@ -54,8 +51,9 @@ class MultiObjective(Objective):
         """
         Performs the evaluation of the objectives at x.
         """
-        f_noisy_eval = self.evaluate(x)[0]
-        for j in range(0,self.output_dim):
-            f_noisy_eval[j] += np.random.normal
+        f_noisy_eval, cost_eval = self.evaluate(x)
+        if self.noise_var  is not None:           
+            for j in range(0,self.output_dim):
+                f_noisy_eval[j] += np.random.normal(scale = np.sqrt(self.noise_var[j]))
             
-        return f_noisy_eval
+        return f_noisy_eval, cost_eval
