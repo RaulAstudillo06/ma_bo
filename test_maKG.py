@@ -15,15 +15,16 @@ func  = GPyOpt.objective_examples.experiments2d.branin()
 
 # --- Attributes
 noise_var = [1., 1.]
-f = MultiObjective([func.f,func.f],noise_var=noise_var)
+#f = MultiObjective([func.f,func.f],noise_var=noise_var)
+f = MultiObjective([func.f,func.f])
 
 # --- Space
 space = GPyOpt.Design_space(space =[{'name': 'var_1', 'type': 'continuous', 'domain': (-5,10)},{'name': 'var_2', 'type': 'continuous', 'domain': (1,15)}])
 
 # --- Model (Multi-output GP)
 n_a = 2
-model = multi_outputGP(output_dim=n_a,noise_var=noise_var)
-
+#model = multi_outputGP(output_dim=n_a,noise_var=noise_var)
+model = multi_outputGP(output_dim=n_a)
 # --- Aquisition optimizer
 acq_opt = GPyOpt.optimization.AcquisitionOptimizer(optimizer='lbfgs', space=space)
 
