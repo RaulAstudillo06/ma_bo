@@ -8,7 +8,7 @@ from .kernel_slice_operations import KernCallsViaSlicerMeta
 from functools import reduce
 import six
 
-@six.add_metaclass(KernCallsViaSlicerMeta)
+#@six.add_metaclass(KernCallsViaSlicerMeta)
 class Kern(Parameterized):
     #===========================================================================
     # This adds input slice support. The rather ugly code for slicing can be
@@ -43,6 +43,7 @@ class Kern(Parameterized):
         Do not instantiate.
         """
         super(Kern, self).__init__(name=name, *a, **kw)
+        #super(Kern, self).__init__(name)
         self.input_dim = int(input_dim)
 
         if active_dims is None:
@@ -97,7 +98,7 @@ class Kern(Parameterized):
     def _effective_input_dim(self):
         return np.size(self._all_dims_active)
 
-    @Cache_this(limit=3)
+    #@Cache_this(limit=3)
     def _slice_X(self, X):
         try:
             return X[:, self._all_dims_active].astype('float')

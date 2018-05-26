@@ -297,8 +297,9 @@ class PosteriorExact(Posterior):
     
     
     def raw_posterior_mean(self, kern, Xnew, pred_var):
-        Kx = kern.K(pred_var, Xnew)
-        mu = np.dot(Kx.T, self.woodbury_vector)
+        #Kx = kern.K(pred_var, Xnew)
+        Kx = kern.K(Xnew, pred_var)
+        mu = np.dot(Kx, self.woodbury_vector)
         if len(mu.shape)==1:
             mu = mu.reshape(-1,1)
         return mu

@@ -1,9 +1,11 @@
 # Copyright (c) 2016, the GPyOpt Authors
 # Licensed under the BSD 3-clause license (see LICENSE.txt)
 
-from .optimizer import OptLbfgs, OptSgd, OptDirect, OptCma, apply_optimizer, choose_optimizer
+from .optimizer import OptLbfgs, OptSgd, OptDirect, OptCma, apply_optimizer, choose_optimizer, apply_optimizer_inner
 from .anchor_points_generator import ObjectiveAnchorPointsGenerator, ThompsonSamplingAnchorPointsGenerator
 from ..core.task.space import Design_space
+import multiprocessing
+from pathos.multiprocessing import ProcessingPool as Pool
 import numpy as np
 
 
@@ -31,7 +33,7 @@ class AcquisitionOptimizer(object):
         self.inner_optimizer_name     = inner_optimizer
         self.kwargs             = kwargs
 
-        ### -- save extra options than can be passed to the optimizer
+        ## -- save extra options than can be passed to the optimizer
         if 'model' in self.kwargs:
             self.model = self.kwargs['model']
 
@@ -42,9 +44,90 @@ class AcquisitionOptimizer(object):
 
         ## -- Context handler: takes
         self.context_manager = ContextManager(space)
+        ## -- Set optimizer and inner optimizer (WARNING: this won't update context)
+        self.optimizer = choose_optimizer(self.optimizer_name, self.context_manager.noncontext_bounds)
+        self.inner_optimizer = choose_optimizer(self.inner_optimizer_name, self.context_manager.noncontext_bounds)
+    
+    
+    def optimize2(self, f=None, df=None, f_df=None, duplicate_manager=None):
+        """
+        Optimizes the input function.
 
+        :param f: function to optimize.
+        :param df: gradient of the function to optimize.
+        :param f_df: returns both the function to optimize and its gradient.
 
+        """
+        self.f = f
+        self.df = df
+        self.f_df = f_df
+        
+
+        ## --- Update the optimizer, in case context has beee passed.
+        self.optimizer = choose_optimizer(self.optimizer_name, self.context_manager.noncontext_bounds)
+
+        ## --- Selecting the anchor points and removing duplicates
+        if self.type_anchor_points_logic == max_objective_anchor_points_logic:
+            anchor_points_generator = ObjectiveAnchorPointsGenerator(self.space, random_design_type, f)
+        elif self.type_anchor_points_logic == thompson_sampling_anchor_points_logic:
+            anchor_points_generator = ThompsonSamplingAnchorPointsGenerator(self.space, sobol_design_type, self.model)
+           
+        ## -- Select the anchor points (with context)
+        anchor_points = anchor_points_generator.get(duplicate_manager=duplicate_manager, context_manager=self.context_manager)
+        print('anchor_points ready')
+        print(anchor_points)
+        pool = Pool(4)
+        optimized_points = pool.map(self._parallel_optimization_wrapper, anchor_points)
+        print('parallel')
+        print(optimized_points)
+        pool = Pool(4)
+        optimized_points2 = [apply_optimizer(self.optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]          
+        print('sequential')
+        print(optimized_points2)
+        x_min, fx_min = min(optimized_points, key=lambda t:t[1])                 
+        return x_min, fx_min
+    
+    
     def optimize(self, f=None, df=None, f_df=None, duplicate_manager=None):
+        """
+        Optimizes the input function.
+
+        :param f: function to optimize.
+        :param df: gradient of the function to optimize.
+        :param f_df: returns both the function to optimize and its gradient.
+
+        """
+        self.f = f
+        self.df = df
+        self.f_df = f_df
+        
+
+        ## --- Update the optimizer, in case context has beee passed.
+        self.optimizer = choose_optimizer(self.optimizer_name, self.context_manager.noncontext_bounds)
+
+        ## --- Selecting the anchor points and removing duplicates
+        if self.type_anchor_points_logic == max_objective_anchor_points_logic:
+            anchor_points_generator = ObjectiveAnchorPointsGenerator(self.space, random_design_type, f)
+        elif self.type_anchor_points_logic == thompson_sampling_anchor_points_logic:
+            anchor_points_generator = ThompsonSamplingAnchorPointsGenerator(self.space, sobol_design_type, self.model)
+           
+        ## -- Select the anchor points (with context)
+        anchor_points = anchor_points_generator.get(duplicate_manager=duplicate_manager, context_manager=self.context_manager)
+        parallel = True
+        if parallel:
+            pool = Pool(5)
+            optimized_points = pool.map(self._parallel_optimization_wrapper, anchor_points)
+            print('optimized points')
+            print(optimized_points)
+            pool = Pool(5)
+        else:
+            optimized_points = [apply_optimizer(self.optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]                 
+                        
+        x_min, fx_min = min(optimized_points, key=lambda t:t[1])                 
+        return x_min, fx_min
+    
+
+    def optimize1(self, f=None, df=None, f_df=None, duplicate_manager=None):
         """
         Optimizes the input function.
 
@@ -104,11 +187,17 @@ class AcquisitionOptimizer(object):
         #print(anchor_points)
         
         ## --- Applying local optimizers at the anchor points and update bounds of the optimizer (according to the context)
-        optimized_points = [apply_optimizer(self.inner_optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]
+        optimized_points = [apply_optimizer_inner(self.inner_optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]
 
         x_min, fx_min = min(optimized_points, key=lambda t:t[1])
                
         return x_min, fx_min
+    
+    #def anchor_points_generator_wrapper(self, f)
+    
+    def _parallel_optimization_wrapper(self, x0):
+        #print(x0)
+        return apply_optimizer(self.optimizer, x0, self.f, None, self.f_df)
 
 
 class ContextManager(object):

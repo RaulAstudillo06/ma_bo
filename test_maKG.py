@@ -5,11 +5,10 @@ from multi_objective import MultiObjective
 from multi_outputGP import multi_outputGP
 from maKG import maKG
 from maEI import maEI
-from general import unif_2d
 from parameter_distribution import ParameterDistribution
 from utility import Utility
 import ma_bo
-
+import sys
 # --- Function to optimize
 func  = GPyOpt.objective_examples.experiments2d.branin()
 
@@ -56,6 +55,9 @@ acquisition = maKG(model, space, optimizer=acq_opt,utility=U)
 # --- Evaluator
 evaluator = GPyOpt.core.evaluators.Sequential(acquisition)
 ma_bo = ma_bo.ma_BO(model, space, f, acquisition, evaluator, initial_design)
-max_iter  = 20
-ma_bo.run_optimization(max_iter = max_iter)
-
+max_iter  = 100
+if len(sys.argv)>1:
+    filename = filename = '/experiments/results_maKG' + str(sys.argv[1]) + '.txt'
+else:
+    filename = None
+ma_bo.run_optimization(max_iter=max_iter, parallel=True, plot=False, results_file=filename)

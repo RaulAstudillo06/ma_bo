@@ -11,8 +11,6 @@ from ... import util
 from ...util.config import config # for assesing whether to use cython
 from paramz.caching import Cache_this
 from paramz.transformations import Logexp
-#import pyximport
-#pyximport.install()
 try:
     from . import stationary_cython
 except ImportError:
@@ -199,6 +197,9 @@ class Stationary(Kern):
         self.variance.gradient = np.sum(self.K(X, X2)* dL_dK)/self.variance
 
         #now the lengthscale gradient(s)
+        #print('test')
+        #print(self.dK_dr_via_X(X, X2).shape)
+        #print(dL_dK.shape)
         dL_dr = self.dK_dr_via_X(X, X2) * dL_dK
         if self.ARD:
 

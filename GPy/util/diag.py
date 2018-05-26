@@ -30,6 +30,7 @@ def view(A, offset=0):
            [ 6,  4, 10]])
     """
     from numpy.lib.stride_tricks import as_strided
+    #print(A)
     assert A.ndim == 2, "only implemented for 2 dimensions"
     assert A.shape[0] == A.shape[1], "attempting to get the view of non-square matrix?!"
     if offset > 0:

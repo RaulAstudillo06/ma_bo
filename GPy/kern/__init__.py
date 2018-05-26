@@ -9,6 +9,7 @@ from .src.kern import Kern
 from .src.add import Add
 from .src.prod import Prod
 from .src.rbf import RBF
+from .src.se import SE
 from .src.linear import Linear, LinearFull
 from .src.static import Bias, White, Fixed, WhiteHeteroscedastic, Precomputed
 from .src.brownian import Brownian

@@ -114,6 +114,7 @@ def _slice_update_gradients_diag(f):
 def _slice_gradients_X(f):
     @wraps(f)
     def wrap(self, dL_dK, X, X2=None):
+        #print(puto)
         with _Slice_wrap(self, X, X2) as s:
             ret = s.handle_return_array(f(self, dL_dK, s.X, s.X2))
         return ret

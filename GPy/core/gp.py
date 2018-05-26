@@ -252,7 +252,6 @@ class GP(Model):
             This method is not designed to be called manually, the framework is set up to automatically call this method upon changes to parameters, if you call
             this method yourself, there may be unexpected consequences.
         """
-        #print('bbb')
         self.posterior, self._log_marginal_likelihood, self.grad_dict = self.inference_method.inference(self.kern, self.X, self.likelihood, self.Y_normalized, self.mean_function, self.Y_metadata)
         self.likelihood.update_gradients(self.grad_dict['dL_dthetaL'])
         self.kern.update_gradients_full(self.grad_dict['dL_dK'], self.X)
@@ -416,6 +415,23 @@ class GP(Model):
         return var
     
     
+    def posterior_variance_noiseless(self, Xnew, kern=None):
+        """
+        For making predictions, does not account for normalization or likelihood
+
+        full_cov is a boolean which defines whether the full covariance matrix
+        of the prediction is computed. If full_cov is False (default), only the
+        diagonal of the covariance is returned.
+
+        .. math::
+            p(f*|X*, X, Y) = \int^{\inf}_{\inf} p(f*|f,X*)p(f|X,Y) df
+                        = N(f*| K_{x*x}(K_{xx} + \Sigma)^{-1}Y, K_{x*x*} - K_{xx*}(K_{xx} + \Sigma)^{-1}K_{xx*}
+            \Sigma := \texttt{Likelihood.variance / Approximate likelihood covariance}
+        """
+        var = self.posterior.raw_posterior_variance(kern=self.kern if kern is None else kern, Xnew=Xnew, pred_var=self._predictive_variable)
+        return var
+    
+    
     def posterior_mean_gradient(self, X, kern=None):
         """
         Compute the derivatives of the posterior mean with respect to X
@@ -423,10 +439,22 @@ class GP(Model):
         """
         if kern is None:
             kern = self.kern
-        mean_gradient = np.empty((X.shape[0],X.shape[1],self.output_dim))
+            
+        mean_gradient = kern.gradients_X(self.posterior.woodbury_vector.T, X, self._predictive_variable)
 
-        for i in range(self.output_dim):
-            mean_gradient[:,:,i] = kern.gradients_X(self.posterior.woodbury_vector[:,i:i+1].T, X, self._predictive_variable)
+        if False:
+            print('test')
+            aux0 = self.posterior_mean(X)
+            h = 1e-7
+            X[0,0] +=h
+            aux1 = self.posterior_mean(X)
+            print((aux1-aux0)/h)
+            X[0,0] -=h
+            X[0,1] +=h
+            aux1 = self.posterior_mean(X)
+            print((aux1-aux0)/h)
+            X[0,1] -=h
+            print(mean_gradient)
         return mean_gradient
     
     
@@ -440,17 +468,23 @@ class GP(Model):
         # gradients wrt the diagonal part k_{xx}
         dv_dX = kern.gradients_X(np.eye(X.shape[0]), X)
         #grads wrt 'Schur' part K_{xf}K_{ff}^{-1}K_{fx}
-        if self.posterior.woodbury_inv.ndim == 3:
-            tmp = np.empty(dv_dX.shape + (self.posterior.woodbury_inv.shape[2],))
-            tmp[:] = dv_dX[:,:,None]
-            for i in range(self.posterior.woodbury_inv.shape[2]):
-                alpha = -2.*np.dot(kern.K(X, self._predictive_variable), self.posterior.woodbury_inv[:, :, i])
-                tmp[:, :, i] += kern.gradients_X(alpha, X, self._predictive_variable)
-        else:
-            tmp = dv_dX
-            alpha = -2.*np.dot(kern.K(X, self._predictive_variable), self.posterior.woodbury_inv)
-            tmp += kern.gradients_X(alpha, X, self._predictive_variable)
-        return tmp
+        alpha = -2.*np.dot(kern.K(X, self._predictive_variable), self.posterior.woodbury_inv)
+        dv_dX += kern.gradients_X(alpha, X, self._predictive_variable)
+        if False:
+            print('test')
+            aux0 = self.posterior_variance(X)
+            h = 1e-7
+            X[0,0] +=h
+            aux1 = self.posterior_variance(X)
+            print((aux1-aux0)/h)
+            X[0,0] -=h
+            X[0,1] +=h
+            aux1 = self.posterior_variance(X)
+            print((aux1-aux0)/h)
+            X[0,1] -=h
+            print(dv_dX)
+            
+        return dv_dX
     
     
     def partial_precomputation_for_covariance(self, X):
@@ -505,15 +539,9 @@ class GP(Model):
         Compute the derivatives of the posterior covariance K^(n)(X,x2) with respect to X.
         """
         if kern is None:
-            kern = self.kern
-
-        x2 = np.atleast_2d(x2)
+            kern = self.kern   
         factor = np.matmul(kern.K(x2,self._predictive_variable),self.posterior.woodbury_inv)
-        tmp = np.empty((X.shape[0],self._predictive_variable.shape[0],X.shape[1]))
-        for i in range(self._predictive_variable.shape[0]):
-            tmp[:,i,:] = kern.gradients_X(1,X,np.atleast_2d(self._predictive_variable[i]))
-        
-        pos_cov_grad = kern.gradients_X(1, X, x2)  - np.squeeze(np.matmul(factor,tmp))
+        pos_cov_grad = kern.gradients_X(None, X, x2)  - np.matmul(factor,kern.gradients_X(None, X, self._predictive_variable))
         return pos_cov_grad
     
     
@@ -522,11 +550,16 @@ class GP(Model):
         Compute the derivatives of the posterior covariance K^(n)(X,x2) with respect to X.
         """
         kern = self.kern
-        tmp = np.empty((X.shape[0],self._predictive_variable.shape[0],X.shape[1]))
-        for i in range(self._predictive_variable.shape[0]):
-            tmp[:,i,:] = kern.gradients_X(1,X,np.atleast_2d(self._predictive_variable[i]))
+        #one = np.ones((1,1))
+        #tmp = np.empty((X.shape[0],self._predictive_variable.shape[0],X.shape[1]))
+        #for i in range(self._predictive_variable.shape[0]):
+            #tmp[:,i,:] = kern.gradients_X(one,X,np.atleast_2d(self._predictive_variable[i]))
+        #cov_gradient = kern.gradients_X(one, X, x2)  - np.squeeze(np.matmul(self.partial_precomp_dcov,tmp))
+        pos_cov_gradient = kern.gradients_X(None, X, x2)  - np.matmul(self.partial_precomp_dcov,kern.gradients_X(None, X, self._predictive_variable))
+        #print('test')
+        #print(cov_gradient)
 
-        return kern.gradients_X(1, X, x2)  - np.squeeze(np.matmul(self.partial_precomp_dcov,tmp))
+        return pos_cov_gradient
     
 
     def predictive_gradients(self, Xnew, kern=None):
