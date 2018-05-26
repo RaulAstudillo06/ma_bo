@@ -49,7 +49,7 @@ class AcquisitionOptimizer(object):
         self.inner_optimizer = choose_optimizer(self.inner_optimizer_name, self.context_manager.noncontext_bounds)
     
     
-    def optimize3(self, f=None, df=None, f_df=None, duplicate_manager=None):
+    def optimize2(self, f=None, df=None, f_df=None, duplicate_manager=None):
         """
         Optimizes the input function.
 

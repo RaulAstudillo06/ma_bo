@@ -152,7 +152,7 @@ class ma_BO(object):
         return argmax
                 
           
-    def run_optimization(self, max_iter=1, parallel=True, plot=True,  max_time=np.inf,  eps=1e-8, context=None, verbosity=False, evaluations_file = None):
+    def run_optimization(self, max_iter=1, parallel=True, plot=False, results_file=None,  max_time=np.inf,  eps=1e-8, context=None, verbosity=False):
         """
         Runs Bayesian Optimization for a number 'max_iter' of iterations (after the initial exploration data)
 
@@ -169,7 +169,7 @@ class ma_BO(object):
 
         # --- Save the options to print and save the results
         self.verbosity = verbosity
-        self.evaluations_file = evaluations_file
+        self.results_file = results_file
         self.context = context
     
                 
@@ -232,6 +232,8 @@ class ma_BO(object):
             if verbosity:
                 print("num acquisition: {}, time elapsed: {:.2f}s".format(
                     self.num_acquisitions, self.cum_time))
+        if results_file is not None:
+            self.save_results(results_file)
         if plot:
             self.plot_convergence(confidence_interval=True)
 
@@ -357,6 +359,7 @@ class ma_BO(object):
                                 self.acquisition.acquisition_function,
                                 filename)
     
+    
     def plot_convergence(self, confidence_interval=False, filename=None):
         """
         Makes twp plots to evaluate the convergence of the model:
@@ -366,5 +369,13 @@ class ma_BO(object):
         """
         return plot_convergence(self.historical_optimal_values, self.var_at_historical_optima, confidence_interval, filename)
 
+
     def get_evaluations(self):
         return self.X.copy(), self.Y.copy()
+    
+    
+    def save_results(self, filename):
+        results = np.zeros((len(self.historical_optimal_values),2))
+        results[:,0] = np.atleast_1d(self.historical_optimal_values)
+        results[:,1] = np.atleast_1d(self.var_at_historical_optima)
+        np.savetxt(filename,results)
