@@ -56,5 +56,8 @@ acquisition = maKG(model, space, optimizer=acq_opt,utility=U)
 evaluator = GPyOpt.core.evaluators.Sequential(acquisition)
 ma_bo = ma_bo.ma_BO(model, space, f, acquisition, evaluator, initial_design)
 max_iter  = 100
-filename = '/experiments/results_maKG' + str(sys.argv[1]) + '.txt'
+if len(sys.argv)>1:
+    filename = filename = '/experiments/results_maKG' + str(sys.argv[1]) + '.txt'
+else:
+    filename = None
 ma_bo.run_optimization(max_iter=max_iter, parallel=True, plot=False, results_file=filename)
