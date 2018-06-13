@@ -9,14 +9,14 @@ from parameter_distribution import ParameterDistribution
 from utility import Utility
 import ma_bo
 import sys
-
+import pathlib 
 # --- Function to optimize
 func  = GPyOpt.objective_examples.experiments2d.branin()
 
 # --- Attributes
 noise_var = [1., 1.]
-#f = MultiObjective([func.f,func.f], noise_var=noise_var)
-f = MultiObjective([func.f,func.f])
+f = MultiObjective([func.f,func.f], noise_var=noise_var)
+#f = MultiObjective([func.f,func.f])
 
 # --- Space
 space = GPyOpt.Design_space(space =[{'name': 'var_1', 'type': 'continuous', 'domain': (-5,10)},{'name': 'var_2', 'type': 'continuous', 'domain': (1,15)}])
@@ -58,9 +58,10 @@ acquisition = maEI(model, space, optimizer=acq_opt,utility=U)
 evaluator = GPyOpt.core.evaluators.Sequential(acquisition)
 ma_bo = ma_bo.ma_BO(model, space, f, acquisition, evaluator, initial_design)
 #bo = GPyOpt.methods.ModularBayesianOptimization(model, space, f, acquisition, evaluator, initial_design)
-max_iter  = 3
+max_iter  = 100
 if len(sys.argv)>1:
-    filename = './experiments/results_maEI' + str(sys.argv[1]) + '.txt'
+    #pathlib.Path('/fs/home/ra598/Documents/Raul/ma_bo/experiments').mkdir(parents=True, exist_ok=True) 
+    filename = '/fs/home/ra598/Documents/Raul/ma_bo/experiments/results_maEI' + str(sys.argv[1]) + '.txt'
 else:
     filename = None
 ma_bo.run_optimization(max_iter=max_iter, parallel=True, plot=False, results_file=filename)

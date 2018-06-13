@@ -14,8 +14,8 @@ func  = GPyOpt.objective_examples.experiments2d.branin()
 
 # --- Attributes
 noise_var = [1., 1.]
-#f = MultiObjective([func.f,func.f],noise_var=noise_var)
-f = MultiObjective([func.f,func.f])
+f = MultiObjective([func.f,func.f],noise_var=noise_var)
+#f = MultiObjective([func.f,func.f])
 
 # --- Space
 space = GPyOpt.Design_space(space =[{'name': 'var_1', 'type': 'continuous', 'domain': (-5,10)},{'name': 'var_2', 'type': 'continuous', 'domain': (1,15)}])

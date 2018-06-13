@@ -13,7 +13,7 @@ from GPyOpt.util.duplicate_manager import DuplicateManager
 from GPyOpt.core.errors import InvalidConfigError
 from GPyOpt.core.task.cost import CostModel
 from GPyOpt.optimization.acquisition_optimizer import ContextManager
-from plotting_services import plot_convergence, plot_acquisition, integrated_plot
+#from plotting_services import plot_convergence, plot_acquisition, integrated_plot
 from pathos.multiprocessing import ProcessingPool as Pool
 
 

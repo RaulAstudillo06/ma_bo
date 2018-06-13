@@ -1,4 +1,9 @@
 #!/bin/sh
 ##NBS-queue: long
 # This script assumes that a single argument is passed, and that this argument is an integer to be passed to peter_example_worker
-python -nodisplay -r "test_maEI.py ${1}; quit;"
+source /fs/home/ra598/Documents/Raul/ma_bo_env/bin/activate
+#echo 'test' > './experiments/results_maEI'${1}'.txt'
+#python test.py > './experiments/results_maEI'${1}'.txt'
+#python test_maEI.py > './experiments/results_maEI'${1}'.txt'
+python test_maEI.py ${1}
+
