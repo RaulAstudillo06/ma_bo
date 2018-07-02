@@ -10,7 +10,8 @@ from .. import kern
 from ..inference.latent_function_inference import exact_gaussian_inference, expectation_propagation
 from ..util.normalizer import Standardize
 from paramz import ObsAr
-
+from ..util.linalg import pdinv, dpotrs, tdot
+from ..util import diag
 import logging
 import warnings
 logger = logging.getLogger("GP")
@@ -506,8 +507,38 @@ class GP(Model):
         kern = self.kern
         #x = np.atleast_2d(x)
         self.partial_precomp_dcov = np.matmul(kern.K(x,self._predictive_variable),self.posterior.woodbury_inv)
+        
+        
+    def partial_precomputation_for_variance_conditioned_on_next_point(self, next_point):
+        """
+        Computes the posterior covariance between points.
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        kern = self.kern
+        self.X_next = np.append(self.X, next_point, axis=0)
+        K_aux = kern.K(X_next)
+        noise_var = self.likelihood.variance
+        diag.add(K_aux, noise_var+1e-8)
+        #K_aux += np.eye(K_aux.shape[0])*noise_var
+        woodbury_inv = pdinv(K_ux)[1]
+        self.partial_precomp_covariance_conditioned_on_next_point = woodbury_inv
     
     
+    def posterior_variance_conditioned_on_next_point(self, X):
+        """
+        Computes the posterior covariance between points.
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        kern = self.kern
+        Kx = kern.K(self.X_next, X)
+        Kxx = kern.K(X)
+        tmp = (np.dot(self.partial_precomp_covariance_conditioned_on_next_point, Kx) * Kx).sum(0)
+        var = (Kxx - tmp)[:,None]
+        return var
+        
+        
     def posterior_covariance_between_points(self, X1, X2):
         """
         Computes the posterior covariance between points.

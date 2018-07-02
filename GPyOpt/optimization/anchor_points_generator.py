@@ -16,7 +16,7 @@ class AnchorPointsGenerator(object):
     def get_anchor_point_scores(self, X):
         raise NotImplementedError("get_anchor_point_scores is not implemented in the parent class.")
 
-    def get(self, num_anchor=5, duplicate_manager=None, unique=False, context_manager=None):
+    def get(self, num_anchor=8, duplicate_manager=None, unique=False, context_manager=None, get_scores=False):
         ## --- We use the context handler to remove duplicates only over the non-context variables
         #if context_manager and not self.space._has_bandit():
             #space_configuration_without_context = [self.space.config_space_expanded[idx] for idx in context_manager.nocontext_index_obj]
@@ -28,6 +28,7 @@ class AnchorPointsGenerator(object):
 
         ## --- Generate initial design
         X = initial_design(self.design_type, self.space, self.num_samples)
+        
 
         #if unique:
             #sorted_design = sorted(list({tuple(x) for x in X}))
@@ -58,8 +59,11 @@ class AnchorPointsGenerator(object):
         scores = self.get_anchor_point_scores(X)
 
         anchor_points = X[np.argsort(scores)[:min(len(scores),num_anchor)], :]
-        #print(anchor_points)
-        return anchor_points
+        if get_scores:
+            anchor_points_scores = np.sort(scores)[0:min(len(scores),num_anchor)]
+            return anchor_points, anchor_points_scores
+        else:
+            return anchor_points
 
 
 class ThompsonSamplingAnchorPointsGenerator(AnchorPointsGenerator):
@@ -82,7 +86,7 @@ class ThompsonSamplingAnchorPointsGenerator(AnchorPointsGenerator):
 
 class ObjectiveAnchorPointsGenerator(AnchorPointsGenerator):
 
-    def __init__(self, space, design_type, objective, num_samples=10):
+    def __init__(self, space, design_type, objective, num_samples=80):
         '''
         From an initial design, it selects the locations with the minimum value according to some objective.
         :param model_space: set to true when the samples need to be obtained for the input domain of the model

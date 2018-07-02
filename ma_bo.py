@@ -13,8 +13,9 @@ from GPyOpt.util.duplicate_manager import DuplicateManager
 from GPyOpt.core.errors import InvalidConfigError
 from GPyOpt.core.task.cost import CostModel
 from GPyOpt.optimization.acquisition_optimizer import ContextManager
-from plotting_services import plot_convergence, plot_acquisition, integrated_plot
+from plotting_services import plot, plot_convergence, plot_acquisition, integrated_plot
 from pathos.multiprocessing import ProcessingPool as Pool
+from copy import deepcopy
 
 
 class ma_BO(object):
@@ -65,8 +66,7 @@ class ma_BO(object):
             marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.objective.output_dim,))
             #print(a)
             val += self.utility.eval_func(support[i],marginal_max_val)*utility_dist[i]
-        print('Current optimal value')    
-        print(val)
+        print('Current optimal value: {}'.format(val))
         return val
     
     
@@ -81,8 +81,7 @@ class ma_BO(object):
             var_marginal_argmax = np.reshape(self.model.posterior_variance_noiseless(marginal_argmax),(self.objective.output_dim,))
             var += self.utility.eval_func(support[i],var_marginal_argmax)*utility_dist[i]
             val += self.utility.eval_func(support[i],marginal_max_val)*utility_dist[i]
-        print('Current optimal value')    
-        print(val)
+        print('Current optimal value: {}'.format(val))    
         return val, var
     
     
@@ -145,7 +144,7 @@ class ma_BO(object):
         
         argmax = self.acquisition.optimizer.optimize_inner_func(f=val_func, f_df=val_func_with_gradient)[0]
         #print(3)
-        #print(argmax)
+        print(argmax)
         #print(self.model.predict(argmax))
         #print(self.model.predict([np.pi,2.275])[0])
         #print(self.model.predict([9.42478,2.475])[0])
@@ -208,13 +207,26 @@ class ma_BO(object):
         while (self.max_time > self.cum_time) and (self.num_acquisitions < self.max_iter):
             
             #if not ((self.num_acquisitions < self.max_iter) and (self._distance_last_evaluations() > self.eps)):
-
+            
+            tmp = self.suggested_sample
             self.suggested_sample = self._compute_next_evaluations()
-
-            # --- Augment XS
+            if np.all(self.suggested_sample == tmp):
+                self.suggested_sample = self._perturb(self.suggested_sample)
+            try:
+                self.acquisition.update_Z_samples()
+            except:
+                pass
+            # --- Augment X
             self.X = np.vstack((self.X,self.suggested_sample))
+            #
+            #print('Acquisition value at optimal points:')
+            #print(self.acquisition.acquisition_function(np.atleast_2d([np.pi,2.275])))
+            #print(self.acquisition.acquisition_function(np.atleast_2d([9.42478,2.475])))
+            #print('Acquisition value at previously evaluated points:')
+            #print(self.acquisition.acquisition_function(self.X))
 
             # --- Evaluate *f* in X, augment Y and update cost function (if needed)
+            print('Acquisition {}'.format(self.num_acquisitions+1))
             self.evaluate_objective()
             # --- Update model
             if (self.num_acquisitions%self.model_update_interval)==0:
@@ -236,7 +248,7 @@ class ma_BO(object):
             self.save_results(results_file)
         if plot:
             self.plot_convergence(confidence_interval=True)
-
+        
         # --- Print the desired result in files
         #if self.evaluations_file is not None:
             #self.save_evaluations(self.evaluations_file)
@@ -251,8 +263,7 @@ class ma_BO(object):
         """
         Evaluates the objective
         """
-        print('Suggested point to evaluate')
-        print(self.suggested_sample)
+        print('Suggested point to evaluate: {}'.format(self.suggested_sample))
         self.Y_new, cost_new = self.objective.evaluate_w_noise(self.suggested_sample)
         self.cost.update_cost_model(self.suggested_sample, cost_new)   
         for j in range(self.objective.output_dim):
@@ -265,7 +276,15 @@ class ma_BO(object):
         Computes the distance between the last two evaluations.
         """
         return np.sqrt(sum((self.X[self.X.shape[0]-1,:]-self.X[self.X.shape[0]-2,:])**2))
-
+    
+    def _perturb(self, x):
+        perturbed_x = np.copy(x)
+        while np.all(perturbed_x == x):
+            perturbed_x = x + np.random.normal(size=x.shape, scale=1e-2)
+            perturbed_x = self.space.round_optimum(perturbed_x)
+        
+        return perturbed_x
+    
 
     def _compute_next_evaluations(self, pending_zipped_X=None, ignored_zipped_X=None):
         """
@@ -295,7 +314,46 @@ class ma_BO(object):
         ### --- Save parameters of the model
         #self._save_model_parameter_values()
         
-    def one_step_assesment(self, attribute=0, context = None):
+    def convergence_assesment(self, n_iter=10, attribute=0, context=None):
+        if self.objective is None:
+            raise InvalidConfigError("Cannot run the optimization loop without the objective function")
+        #self.model_parameters_iterations = None
+        self.context = context
+        # --- Initial function evaluation
+        if self.X is not None and self.Y is None:
+            self.Y, cost_values = self.objective.evaluate(self.X)
+            if self.cost.cost_type == 'evaluation_time':
+                self.cost.update_cost_model(self.X, cost_values)
+            self._update_model()
+        for i in range(n_iter):
+            self.suggested_sample = self._compute_next_evaluations()
+            filename = './experiments/2d' + str(i) + '.eps'
+            model_to_plot = deepcopy(self.model)
+            integrated_plot(self.acquisition.space.get_bounds(),
+                                    self.X.shape[1],
+                                    model_to_plot,
+                                    self.X,
+                                    self.Y,
+                                    self.acquisition.acquisition_function,
+                                    self.suggested_sample,
+                                    attribute,
+                                    filename)     
+                
+            self.X = np.vstack((self.X,self.suggested_sample))
+            self.evaluate_objective()
+            self._update_model()
+            #self.model.get_model_parameters_names()
+            #self.model.get_model_parameters()
+            #print('Acquisition value at previously evaluated points:')
+            #print(self.acquisition.acquisition_function(self.X))
+            #print('Posterior mean and variance')
+            #print(self.model.predict(self.X))
+            #print(self.Y)
+            self.historical_optimal_values.append(self._current_max_value())
+        
+        
+        
+    def one_step_assesment(self, attribute=0, context=None):
         """
         """
         if self.objective is None:
@@ -311,7 +369,6 @@ class ma_BO(object):
 
         self.suggested_sample = self._compute_next_evaluations()
 
-        from copy import deepcopy
         model_to_plot = deepcopy(self.model)
         
         integrated_plot(self.acquisition.space.get_bounds(),

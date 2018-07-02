@@ -20,7 +20,7 @@ class multi_outputGP(object):
     """
     analytical_gradient_prediction = True
 
-    def __init__(self, output_dim, kernel=None, noise_var=None, exact_feval=None, ARD=None):
+    def __init__(self, output_dim, kernel=None, noise_var=None, exact_feval=None, n_samples=10, ARD=None):
         
         self.output_dim = output_dim
         
@@ -39,6 +39,8 @@ class multi_outputGP(object):
         else:
             self.exact_feval = exact_feval
             
+        self.n_samples = n_samples
+            
         if ARD is None:
             self.ARD = [False]*output_dim
         else:
@@ -48,7 +50,7 @@ class multi_outputGP(object):
         #self.Y_all = [None]*output_dim
         self.output = [None]*output_dim
         for j in range(output_dim):
-            self.output[j] = GPyOpt.models.GPModel(kernel=self.kernel[j],noise_var=self.noise_var[j],exact_feval=self.exact_feval[j],ARD=self.ARD[j],verbose=False)
+            self.output[j] = GPyOpt.models.GPModel(kernel=self.kernel[j],noise_var=self.noise_var[j],exact_feval=self.exact_feval[j], n_samples=self.n_samples, ARD=self.ARD[j],verbose=False)
 
     #@staticmethod
     #def fromConfig(config):
@@ -97,26 +99,29 @@ class multi_outputGP(object):
             
     def updateModel_single_output(self, index):
         self.output[index].updateModel(self.X_all[index],self.Y_all[index],None,None)
+        
+    
+    def number_of_hyps_samples(self):
+        return self.n_samples
                   
+    
+    def set_hyperparameters(self, n):
+        for j in range(self.output_dim):
+            self.output[j].set_hyperparameters(n)
+            
+    
+    def set_hyperparameters2(self, hyperparameters):
+        for j in range(self.output_dim):
+            self.output[j].set_hyperparameters(hyperparameters[j])
+            
             
     def get_hyperparameters_samples(self, n_samples=1):
         hyperparameters = [[None]*self.output_dim]*n_samples
         for j in range(self.output_dim):
             for i in range(n_samples):
-                hyperparameters[i][j] = self.output[j].get_hyperparameters_samples(n_samples)[i]
-           
+                hyperparameters[i][j] = self.output[j].get_hyperparameters_samples(n_samples)[i] 
         return hyperparameters
-    
-    
-    def set_hyperparameters(self, hyperparameters):
-        for j in range(self.output_dim):
-            self.output[j].set_hyperparameters(hyperparameters[j])
             
-        
-    def restart_hyperparameters_counter(self):
-        for j in range(self.output_dim):
-            self.output[j].restart_hyperparameters_counter()
-
 
     def predict(self,  X,  full_cov=False):
         """
@@ -130,6 +135,20 @@ class multi_outputGP(object):
             m[j,:] = tmp1[:,0]
             cov[j,:] = tmp2[:,0]
         return m, cov
+    
+    def predict_noiseless(self,  X,  full_cov=False):
+        """
+        Predictions with the model. Returns posterior means and variance at X.
+        """
+        X = np.atleast_2d(X)
+        m = np.empty((self.output_dim,X.shape[0]))
+        cov = np.empty((self.output_dim,X.shape[0]))
+        for j in range(self.output_dim):
+            tmp1, tmp2= self.output[j].predict_noiseless(X,full_cov)
+            m[j,:] = tmp1[:,0]
+            cov[j,:] = tmp2[:,0]
+        return m, cov
+    
     
     def posterior_mean(self,  X):
         """
@@ -187,6 +206,27 @@ class multi_outputGP(object):
         """
         for j in range(self.output_dim):
             self.output[j].partial_precomputation_for_covariance_gradient(x)
+            
+            
+    def partial_precomputation_for_variance_conditioned_on_next_point(self, next_point):
+        """
+        Computes the posterior covariance between points.
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        for j in range(self.output_dim):
+            self.output[j].partial_precomputation_for_covariance_conditioned_on_next_point(next_point)
+        
+        
+    def posterior_covariance_variance_on_next_point(self, X):
+        """
+        Computes the posterior covariance between points.
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        cov = np.empty((self.output_dim,X.shape[0],X.shape[0]))
+        for j in range(self.output_dim):
+            cov[j, :, :] = self.output[j].posterior_covariance_conditioned_on_next_point(X)
             
 
     def posterior_covariance_between_points(self,  X1,  X2):

@@ -6,7 +6,7 @@ from GPyOpt.core.task.cost import constant_cost_withGradients
 from pathos.multiprocessing import ProcessingPool as Pool
 
 
-class maKG(AcquisitionBase):
+class UKG(AcquisitionBase):
     """
     Multi-attribute knowledge gradient acquisition function
 
@@ -27,8 +27,9 @@ class maKG(AcquisitionBase):
         else:
             print('LBC acquisition does now make sense with cost. Cost set to constant.')
             self.cost_withGradients = constant_cost_withGradients
-        
-        self.Z_samples = np.random.normal(size=10)
+        self.n_attributes = self.model.output_dim
+        self.W_samples = np.random.normal(size=(10,self.n_attributes))
+        self.Z_samples = np.random.normal(size=(10,self.n_attributes))
         self.n_hyps_samples = min(5, self.model.number_of_hyps_samples())
 
     def _compute_acq(self, X, parallel=True):
@@ -67,26 +68,29 @@ class maKG(AcquisitionBase):
         marginal_acqX = np.zeros((X.shape[0],len(utility_params_samples)))
         #self.model.restart_hyperparameters_counter()
         #gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
-        n_z = len(self.Z_samples)
+        n_w = len(self.W_samples)
         
         for h in range(self.n_hyps_samples):
             self.model.set_hyperparameters(h)
-            varX = self.model.posterior_variance(X)
+            inv_varX = np.reciprocal(self.model.posterior_variance(X))
             for i in range(0,len(X)):
                 x = np.atleast_2d(X[i])
                 self.model.partial_precomputation_for_covariance(x)
                 self.model.partial_precomputation_for_covariance_gradient(x)
-                for l in range(0,len(utility_params_samples)):
-                    aux = np.multiply(np.square(utility_params_samples[l]),np.reciprocal(varX[:,i])) # Precompute this quantity for computational efficiency.
-                    for Z in self.Z_samples:
+                for utility_param in utility_params_samples:
+                    for W in self.W_samples:
+                        aux = np.multiply(inv_varX[i,:],W)
                         # inner function of maKG acquisition function.
                         def inner_func(X_inner):
+                            func_val = np.zeros((X_inner.shape[0],1))
                             X_inner = np.atleast_2d(X_inner)
-                            muX_inner = self.model.posterior_mean(X_inner)
-                            cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
-                            a = np.matmul(utility_params_samples[l],muX_inner)
-                            #a = support[t]*muX_inner
-                            b = np.sqrt(np.matmul(aux,np.square(cov)))
+                            cross_cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
+                            posterior_cov_conditioned_on_next_point = 
+                            a = self.model.posterior_mean(X_inner)
+                            b = np.multiply(cross_cov, aux)
+                            for Z in self.Z_samples:
+                                c = np.multiply(posterior_cov_conditioned_on_next_point, Z)
+                                func_val = self.utility.eval_func(utility_param,a+b+c)
                             func_val = np.reshape(a + b*Z, (len(X_inner),1))
                             return -func_val
                         # inner function of maKG acquisition function with its gradient.
@@ -271,7 +275,5 @@ class maKG(AcquisitionBase):
         return marginal_acqX, marginal_dacq_dX
     
     
-    def update_Z_samples(self):
-        print('updating Z samples')
-        print(self.Z_samples)
-        self.Z_samples = np.random.normal(size=len(self.Z_samples))
+    def update_Z_samples(self, n_samples):
+        self.Z_samples = np.random.normal(size=10)

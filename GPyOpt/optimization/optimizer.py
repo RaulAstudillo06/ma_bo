@@ -54,19 +54,20 @@ class OptSgd(Optimizer):
                 elif x[0,k] > self.bounds[k][1]:
                     x[0,k] = self.bounds[k][1]
                     
-            f_previous = fx       
+            #f_previous = fx
             fx, dfx = f_df(x)
-            #print(dfx)
-            #print(fx)
-            #h = 1e-7
-            #x[0,0] +=h
-            #f_aux = f(x)
-            #print((f_aux-fx)/h)
-            #x[0,0] -=h
-            #x[0,1] +=h
-            #f_aux = f(x)
-            #print((f_aux-fx)/h)
-            #x[0,1] -=h          
+            print('test begin')
+            print(dfx)
+            h = 1e-7
+            x[0,0] +=h
+            f_aux = f(x)
+            print((f_aux-fx)/h)
+            x[0,0] -=h
+            x[0,1] +=h
+            f_aux = f(x)
+            print((f_aux-fx)/h)
+            x[0,1] -=h
+            print('test end')
             #if np.absolute(fx - f_previous) < 1e-5:
                 #break       
         
@@ -102,25 +103,30 @@ class OptADAM(Optimizer):
 
         for t  in range(1, self.maxiter + 1):
             #print(t)
-            f, g = f_df(x)
-            m = beta1*m +(1-beta1)*g
-            v = beta2*v +(1-beta2)*np.square(g)
+            f_x, g_x = f_df(x)
+            m = beta1*m +(1-beta1)*g_x
+            v = beta2*v +(1-beta2)*np.square(g_x)
             beta1_power = beta1_power*beta1
             m_hat = m/(1-beta1_power)
             beta2_power = beta2_power*beta2
             v_hat = v/(1-beta2_power)
-            x = x - alpha*np.divide(m_hat,np.sqrt(v_hat)+eps)
+            tmp = alpha*np.divide(m_hat,np.sqrt(v_hat)+eps)
+            if np.any(np.isnan(tmp)):
+                print('nan found')
+                x = np.atleast_2d(x)
+                f_x = f(x)
+                return x, f_x
+            
+            x = x - tmp
             for k in range(x.shape[1]):
                 if x[0,k] < self.bounds[k][0]:
                     x[0,k] = self.bounds[k][0]
                 elif x[0,k] > self.bounds[k][1]:
                     x[0,k] = self.bounds[k][1]
-            #print(f)        
-            #print(g)   
-        
-        x = np.atleast_2d(x)
-        f = np.atleast_2d(f)
-        return x, f
+
+        x = np.atleast_2d(x)      
+        f_x = f(x)
+        return x, f_x
     
 
 class OptLbfgs(Optimizer):
@@ -145,7 +151,7 @@ class OptLbfgs(Optimizer):
         if f_df is None and df is None:
             res = scipy.optimize.fmin_l_bfgs_b(f, x0=x0, bounds=self.bounds, approx_grad=True, maxiter=self.maxiter) #factr=1e4
         else:
-            res = scipy.optimize.fmin_l_bfgs_b(f_df, x0=x0, bounds=self.bounds, maxiter=self.maxiter, factr=1e7)
+            res = scipy.optimize.fmin_l_bfgs_b(f_df, x0=x0, bounds=self.bounds, maxiter=self.maxiter, factr=1e6)
 
         ### --- We check here if the the optimizer moved. It it didn't we report x0 and f(x0) as scipy can return NaNs
         if res[2]['task'] == b'ABNORMAL_TERMINATION_IN_LNSRCH':
