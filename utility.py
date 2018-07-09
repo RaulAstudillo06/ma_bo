@@ -41,7 +41,7 @@ class Utility(object):
         return self.func(parameter,y)
     
     
-    def _eval_gradient(self, parameter, y):
+    def eval_gradient(self, parameter, y):
         """
         Evaluates the gradient f the utility function at y given a fixed parameter.
         """

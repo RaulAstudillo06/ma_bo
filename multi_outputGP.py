@@ -215,19 +215,19 @@ class multi_outputGP(object):
         :param X2: other input observations
         """
         for j in range(self.output_dim):
-            self.output[j].partial_precomputation_for_covariance_conditioned_on_next_point(next_point)
+            self.output[j].partial_precomputation_for_variance_conditioned_on_next_point(next_point)
         
         
-    def posterior_covariance_variance_on_next_point(self, X):
+    def posterior_variance_conditioned_on_next_point(self, X):
         """
         Computes the posterior covariance between points.
         :param X1: some input observations
         :param X2: other input observations
         """
-        cov = np.empty((self.output_dim,X.shape[0],X.shape[0]))
+        var = np.empty((self.output_dim,X.shape[0]))
         for j in range(self.output_dim):
-            cov[j, :, :] = self.output[j].posterior_covariance_conditioned_on_next_point(X)
-            
+            var[j,:] = self.output[j].posterior_variance_conditioned_on_next_point(X)[:,0]
+        return var    
 
     def posterior_covariance_between_points(self,  X1,  X2):
         """

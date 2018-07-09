@@ -10,7 +10,7 @@ from .. import kern
 from ..inference.latent_function_inference import exact_gaussian_inference, expectation_propagation
 from ..util.normalizer import Standardize
 from paramz import ObsAr
-from ..util.linalg import pdinv, dpotrs, tdot
+from ..util.linalg import pdinv, dpotrs, tdot, dtrtrs, dpotri
 from ..util import diag
 import logging
 import warnings
@@ -517,12 +517,15 @@ class GP(Model):
         """
         kern = self.kern
         self.X_next = np.append(self.X, next_point, axis=0)
-        K_aux = kern.K(X_next)
+        K_aux = kern.K(self.X_next)
         noise_var = self.likelihood.variance
         diag.add(K_aux, noise_var+1e-8)
         #K_aux += np.eye(K_aux.shape[0])*noise_var
-        woodbury_inv = pdinv(K_ux)[1]
-        self.partial_precomp_covariance_conditioned_on_next_point = woodbury_inv
+        tmp = pdinv(K_aux)
+        self.woodbury_inv_conditioned_on_next_point = tmp[0]
+        self.woodbury_chol_conditioned_on_next_point = tmp[1]
+        #print(dpotri(self.woodbury_chol_conditioned_on_next_point, lower=1)[0])
+        #print(self.woodbury_inv_conditioned_on_next_point)
     
     
     def posterior_variance_conditioned_on_next_point(self, X):
@@ -533,10 +536,39 @@ class GP(Model):
         """
         kern = self.kern
         Kx = kern.K(self.X_next, X)
-        Kxx = kern.K(X)
-        tmp = (np.dot(self.partial_precomp_covariance_conditioned_on_next_point, Kx) * Kx).sum(0)
-        var = (Kxx - tmp)[:,None]
+        Kxx = kern.Kdiag(X)
+        tmp = dtrtrs(self.woodbury_chol_conditioned_on_next_point, Kx)[0]
+        var = (Kxx - np.square(tmp).sum(0))[:,None]
         return var
+    
+    
+    def posterior_variance_gradient_conditioned_on_next_point(self, X):
+        """
+        Computes the posterior covariance between points.
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        kern = self.kern
+        # gradients wrt the diagonal part k_{xx}
+        dv_dX = kern.gradients_X(np.eye(X.shape[0]), X)
+        #grads wrt 'Schur' part K_{xf}K_{ff}^{-1}K_{fx}
+        alpha = -2.*np.dot(kern.K(X, self.X_next), self.woodbury_inv_conditioned_on_next_point)
+        dv_dX += kern.gradients_X(alpha, X, self.X_next)
+        if False:
+            print('test')
+            aux0 = self.posterior_variance(X)
+            h = 1e-7
+            X[0,0] +=h
+            aux1 = self.posterior_variance(X)
+            print((aux1-aux0)/h)
+            X[0,0] -=h
+            X[0,1] +=h
+            aux1 = self.posterior_variance(X)
+            print((aux1-aux0)/h)
+            X[0,1] -=h
+            print(dv_dX)
+            
+        return dv_dX
         
         
     def posterior_covariance_between_points(self, X1, X2):

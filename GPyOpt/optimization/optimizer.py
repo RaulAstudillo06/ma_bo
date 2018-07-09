@@ -46,7 +46,7 @@ class OptSgd(Optimizer):
         for t  in range(self.maxiter):
             if t>48:
                 print(t)
-            x = x - 0.3*np.power(t+1,-0.7)*dfx
+            x = x - 0.3*np.power(t+1,-0.5)*dfx
             #print(x)
             for k in range(x.shape[1]):
                 if x[0,k] < self.bounds[k][0]:
@@ -58,7 +58,7 @@ class OptSgd(Optimizer):
             fx, dfx = f_df(x)
             print('test begin')
             print(dfx)
-            h = 1e-7
+            h = 1e-6
             x[0,0] +=h
             f_aux = f(x)
             print((f_aux-fx)/h)
@@ -171,7 +171,7 @@ class OptDirect(Optimizer):
     of the function. Only requires f and the box constraints to work.
 
     '''
-    def __init__(self, bounds, maxiter=1000):
+    def __init__(self, bounds, maxiter=50):
         super(OptDirect, self).__init__(bounds)
         self.maxiter = maxiter
         assert self.space.has_types['continuous']
@@ -204,7 +204,7 @@ class OptCma(Optimizer):
     an stochastic search based on multivariate Gaussian samples. Only requires f and the box constraints to work.
 
     '''
-    def __init__(self, bounds, maxiter=5):
+    def __init__(self, bounds, maxiter=50):
         super(OptCma, self).__init__(bounds)
         self.maxiter = maxiter
 

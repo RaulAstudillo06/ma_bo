@@ -130,5 +130,5 @@ class ackley:
             noise = np.zeros(n).reshape(n,1)
         else:
             noise = np.random.normal(0,self.sd,n).reshape(n,1)
-        return fval.reshape(n,1) + noise
+        return -fval.reshape(n,1) - noise
 

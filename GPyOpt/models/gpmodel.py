@@ -227,7 +227,7 @@ class GPModel(BOModel):
         :param X1: some input observations
         :param X2: other input observations
         """
-        self.current_model.partial_precomputation_for_covariance_conditioned_on_next_point(next_point)
+        self.current_model.partial_precomputation_for_variance_conditioned_on_next_point(next_point)
         
         
     def posterior_variance_conditioned_on_next_point(self, X):
@@ -236,7 +236,7 @@ class GPModel(BOModel):
         :param X1: some input observations
         :param X2: other input observations
         """
-        return self.current_model.posterior_covariance_conditioned_on_next_point(X)
+        return self.current_model.posterior_variance_conditioned_on_next_point(X)
         
     
     def posterior_covariance_between_points(self, X1, X2):

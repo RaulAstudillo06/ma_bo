@@ -28,7 +28,7 @@ class maKG(AcquisitionBase):
             print('LBC acquisition does now make sense with cost. Cost set to constant.')
             self.cost_withGradients = constant_cost_withGradients
         
-        self.Z_samples = np.random.normal(size=10)
+        self.Z_samples = np.random.normal(size=7)
         self.n_hyps_samples = min(5, self.model.number_of_hyps_samples())
 
     def _compute_acq(self, X, parallel=True):
@@ -221,11 +221,11 @@ class maKG(AcquisitionBase):
             self.model.set_hyperparameters(h)
             varX = self.model.posterior_variance(X)
             dvar_dX = self.model.posterior_variance_gradient(X)
-            for i in range(0,len(X)):
+            for i in range(len(X)):
                 x = np.atleast_2d(X[i])
                 self.model.partial_precomputation_for_covariance(x)
                 self.model.partial_precomputation_for_covariance_gradient(x)
-                for l in range(0,len(utility_params_samples)):
+                for l in range(len(utility_params_samples)):
                     # Precompute aux1 and aux2 for computational efficiency.
                     aux = np.multiply(np.square(utility_params_samples[l]),np.reciprocal(varX[:,i])) 
                     aux2 = np.multiply(np.square(utility_params_samples[l]),np.square(np.reciprocal(varX[:,i]))) 

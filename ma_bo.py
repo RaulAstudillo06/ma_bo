@@ -50,6 +50,7 @@ class ma_BO(object):
         self.var_at_historical_optima = []
         self.cost = CostModel(cost)
         self.model_parameters_iterations = None
+        self.n_attributes = self.model.output_dim
 
     
     def _current_max_value(self):
@@ -63,7 +64,7 @@ class ma_BO(object):
         utility_dist = self.utility.parameter_dist.prob_dist
         for i in range(len(support)):
             marginal_argmax = self._current_marginal_argmax(support[i])
-            marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.objective.output_dim,))
+            marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.n_attributes,))
             #print(a)
             val += self.utility.eval_func(support[i],marginal_max_val)*utility_dist[i]
         print('Current optimal value: {}'.format(val))
@@ -77,8 +78,8 @@ class ma_BO(object):
         utility_dist = self.utility.parameter_dist.prob_dist
         for i in range(len(support)):
             marginal_argmax = self._current_marginal_argmax(support[i])
-            marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.objective.output_dim,))
-            var_marginal_argmax = np.reshape(self.model.posterior_variance_noiseless(marginal_argmax),(self.objective.output_dim,))
+            marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.n_attributes,))
+            var_marginal_argmax = np.reshape(self.model.posterior_variance_noiseless(marginal_argmax),(self.n_attributes,))
             var += self.utility.eval_func(support[i],var_marginal_argmax)*utility_dist[i]
             val += self.utility.eval_func(support[i],marginal_max_val)*utility_dist[i]
         print('Current optimal value: {}'.format(val))    
@@ -128,19 +129,34 @@ class ma_BO(object):
                 return -valX, -dval_dX
 
         else:
+            Z_samples = np.ones((10,self.n_attributes))#np.random.normal(size=(10,self.n_attributes))
             def val_func(X):
-                N = 2
                 X = np.atleast_2d(X)
-                mu, var = self.model.predict(X)
-                output = np.zeros((len(X),1))
-                sample = np.zeros(self.model.output_dim)
-                for i in range(len(X)):
-                    for n in range(N):
-                        Z = np.random.normal(size=self.model.output_dim)
-                        sample = mu[:,i,0] + np.multiply(np.sqrt(var[:,i,0]),Z)
-                        output[i,0] += self.utility.eval_func(parameter,sample)
-                    output[i,0] = output[i,0]/N
-                return -output
+                mean, var = self.model.predict_noiseless(X)
+                std = np.sqrt(var)
+                func_val = np.zeros((X.shape[0],1))
+                for i in range(X.shape[0]):
+                    for Z in Z_samples:
+                        func_val[i,0] += self.utility.eval_func(parameter,mean[:,i] + np.multiply(std[:,i],Z))
+                return -func_val
+            
+            def val_func_with_gradient(X):
+                X = np.atleast_2d(X)
+                mean, var = self.model.predict_noiseless(X)
+                std = np.sqrt(var)
+                dmean_dX = self.model.posterior_mean_gradient(X)
+                dstd_dX = self.model.posterior_variance_gradient(X)
+                func_val = np.zeros((X.shape[0],1))
+                func_gradient = np.zeros(X.shape)
+                for i in range(X.shape[0]):
+                    for j in range(self.n_attributes):
+                        dstd_dX[j,i,:] /= (2*std[j,i])
+                    for Z in Z_samples:
+                        aux1 = mean[:,i] + np.multiply(Z, std[:,i])
+                        func_val[i,0] += self.utility.eval_func(parameter, aux1)
+                        aux2 = dmean_dX[:,i,:] + np.multiply(Z,dstd_dX[:,i,:])
+                        func_gradient[i,:] += np.matmul(self.utility.eval_gradient(parameter, aux1), aux2)
+                return -func_val, -func_gradient
         
         argmax = self.acquisition.optimizer.optimize_inner_func(f=val_func, f_df=val_func_with_gradient)[0]
         #print(3)
@@ -233,9 +249,13 @@ class ma_BO(object):
                 self._update_model()
             self.model.get_model_parameters_names()
             self.model.get_model_parameters()
-            current_max_val, var_at_current_max = self._current_max_value_and_var()
+            include_var = True
+            if include_var: 
+                current_max_val, var_at_current_max = self._current_max_value_and_var()
+                self.var_at_historical_optima.append(var_at_current_max)
+            else:
+                current_max_val = self._current_max_value()
             self.historical_optimal_values.append(current_max_val)
-            self.var_at_historical_optima.append(var_at_current_max)
 
             # --- Update current evaluation time and function evaluations
             self.cum_time = time.time() - self.time_zero

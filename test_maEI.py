@@ -11,26 +11,28 @@ import ma_bo
 import sys
 
 # --- Function to optimize
-func  = GPyOpt.objective_examples.experiments2d.branin()
-
+#func  = GPyOpt.objective_examples.experiments2d.branin()
+func  = GPyOpt.objective_examples.experimentsNd.ackley(input_dim=5)
 # --- Attributes
 noise_var = [0.1, 0.1]
-f = MultiObjective([func.f,func.f], noise_var=noise_var)
-#f = MultiObjective([func.f,func.f])
+#f = MultiObjective([func.f,func.f], noise_var=noise_var)
+f = MultiObjective([func.f,func.f])
 
 # --- Space
 space = GPyOpt.Design_space(space =[{'name': 'var_1', 'type': 'continuous', 'domain': (-5,10)},{'name': 'var_2', 'type': 'continuous', 'domain': (1,15)}])
+#space = GPyOpt.Design_space(space =[{'name': 'var', 'type': 'continuous', 'domain': (-2,2), 'dimensionality': 5}])
 
 # --- Model (Multi-output GP)
 n_a = 2
-model = multi_outputGP(output_dim=n_a, noise_var=noise_var)
+model = multi_outputGP(output_dim=n_a, exact_feval=[True,True])
+#model = multi_outputGP(output_dim=n_a, noise_var=noise_var)
 #model = multi_outputGP(output_dim=n_a)
 
 # --- Aquisition optimizer
 acq_opt = GPyOpt.optimization.AcquisitionOptimizer(optimizer='lbfgs', space=space)
 
 # --- Initial design
-initial_design = GPyOpt.experiment_design.initial_design('latin', space, 5)
+initial_design = GPyOpt.experiment_design.initial_design('latin', space, 12)
 #print(initial_design)
 
 # --- Parameter distribution
