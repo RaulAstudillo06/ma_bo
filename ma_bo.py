@@ -49,8 +49,10 @@ class ma_BO(object):
         self.historical_optimal_values = []
         self.var_at_historical_optima = []
         self.cost = CostModel(cost)
-        self.model_parameters_iterations = None
         self.n_attributes = self.model.output_dim
+        self.n_hyps_samples = min(5, self.model.number_of_hyps_samples())
+        self.n_parameter_samples = 15
+        self.full_parameter_support = False
 
     
     def _current_max_value(self):
@@ -58,15 +60,23 @@ class ma_BO(object):
         Computes E_n[U(f(x_max))|f], where U is the utility function, f is the true underlying ojective function and x_max = argmax E_n[U(f(x))|U]. See
         function _marginal_max_value_so_far below.
         """
-
         val = 0
-        support = self.utility.parameter_dist.support
-        utility_dist = self.utility.parameter_dist.prob_dist
-        for i in range(len(support)):
-            marginal_argmax = self._current_marginal_argmax(support[i])
-            marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.n_attributes,))
-            #print(a)
-            val += self.utility.eval_func(support[i],marginal_max_val)*utility_dist[i]
+        if self.full_parameter_support:
+            utility_param_support = self.utility.parameter_dist.support
+            utility_param_dist = self.utility.parameter_dist.prob_dist
+            for i in range(len(utility_param_support)):
+                marginal_argmax = self._current_marginal_argmax(utility_param_support[i])
+                marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.n_attributes,))
+                #print(a)
+                val += self.utility.eval_func(utility_param_support[i],marginal_max_val)*utility_param_dist[i]
+        else:
+            utility_param_samples = self.utility.parameter_dist.sample(50)
+            for i in range(len(utility_param_samples)):
+                marginal_argmax = self._current_marginal_argmax(utility_param_samples[i])
+                marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.n_attributes,))
+                #print(a)
+                val += self.utility.eval_func(utility_param_samples[i],marginal_max_val)
+            val /= len(utility_param_samples)
         print('Current optimal value: {}'.format(val))
         return val
     
@@ -129,41 +139,47 @@ class ma_BO(object):
                 return -valX, -dval_dX
 
         else:
-            Z_samples = np.ones((10,self.n_attributes))#np.random.normal(size=(10,self.n_attributes))
+            Z_samples = np.random.normal(size=(25,self.n_attributes))
             def val_func(X):
                 X = np.atleast_2d(X)
-                mean, var = self.model.predict_noiseless(X)
-                std = np.sqrt(var)
-                func_val = np.zeros((X.shape[0],1))
-                for i in range(X.shape[0]):
-                    for Z in Z_samples:
-                        func_val[i,0] += self.utility.eval_func(parameter,mean[:,i] + np.multiply(std[:,i],Z))
+                for h in range(self.n_hyps_samples):
+                    self.model.set_hyperparameters(h)
+                    mean, var = self.model.predict_noiseless(X)
+                    std = np.sqrt(var)
+                    func_val = np.zeros((X.shape[0],1))
+                    for i in range(X.shape[0]):
+                        for Z in Z_samples:
+                            func_val[i,0] += self.utility.eval_func(parameter,mean[:,i] + np.multiply(std[:,i],Z))
+                #func_val /= self.n_hyps_samples*50
                 return -func_val
             
             def val_func_with_gradient(X):
                 X = np.atleast_2d(X)
-                mean, var = self.model.predict_noiseless(X)
-                std = np.sqrt(var)
-                dmean_dX = self.model.posterior_mean_gradient(X)
-                dstd_dX = self.model.posterior_variance_gradient(X)
-                func_val = np.zeros((X.shape[0],1))
-                func_gradient = np.zeros(X.shape)
-                for i in range(X.shape[0]):
-                    for j in range(self.n_attributes):
-                        dstd_dX[j,i,:] /= (2*std[j,i])
-                    for Z in Z_samples:
-                        aux1 = mean[:,i] + np.multiply(Z, std[:,i])
-                        func_val[i,0] += self.utility.eval_func(parameter, aux1)
-                        aux2 = dmean_dX[:,i,:] + np.multiply(Z,dstd_dX[:,i,:])
-                        func_gradient[i,:] += np.matmul(self.utility.eval_gradient(parameter, aux1), aux2)
+                for h in range(self.n_hyps_samples):
+                    self.model.set_hyperparameters(h)
+                    mean, var = self.model.predict_noiseless(X)
+                    std = np.sqrt(var)
+                    dmean_dX = self.model.posterior_mean_gradient(X)
+                    dstd_dX = self.model.posterior_variance_gradient(X)
+                    func_val = np.zeros((X.shape[0],1))
+                    func_gradient = np.zeros(X.shape)
+                    for i in range(X.shape[0]):
+                        for j in range(self.n_attributes):
+                            dstd_dX[j,i,:] /= (2*std[j,i])
+                        for Z in Z_samples:
+                            aux1 = mean[:,i] + np.multiply(Z, std[:,i])
+                            func_val[i,0] += self.utility.eval_func(parameter, aux1)
+                            aux2 = dmean_dX[:,i,:] + np.multiply(Z,dstd_dX[:,i,:])
+                            func_gradient[i,:] += np.matmul(self.utility.eval_gradient(parameter, aux1), aux2)
                 return -func_val, -func_gradient
         
         argmax = self.acquisition.optimizer.optimize_inner_func(f=val_func, f_df=val_func_with_gradient)[0]
         #print(3)
-        print(argmax)
-        #print(self.model.predict(argmax))
-        #print(self.model.predict([np.pi,2.275])[0])
-        #print(self.model.predict([9.42478,2.475])[0])
+        #print('Marginal optimal point: {}'.format(argmax))
+        #print('Posterior mean and variance at marginal optimal point: {}'.format(self.model.predict(argmax)))
+        #print('Posterior mean and variance at true optimal points:')
+        #print(self.model.predict([np.pi,2.275]))
+        #print(self.model.predict([9.42478,2.475]))
         return argmax
                 
           
@@ -249,7 +265,7 @@ class ma_BO(object):
                 self._update_model()
             self.model.get_model_parameters_names()
             self.model.get_model_parameters()
-            include_var = True
+            include_var = False
             if include_var: 
                 current_max_val, var_at_current_max = self._current_max_value_and_var()
                 self.var_at_historical_optima.append(var_at_current_max)
@@ -267,7 +283,8 @@ class ma_BO(object):
         if results_file is not None:
             self.save_results(results_file)
         if plot:
-            self.plot_convergence(confidence_interval=True)
+            #self.plot_convergence(confidence_interval=True)
+            self.plot_pareto_front()
         
         # --- Print the desired result in files
         #if self.evaluations_file is not None:
@@ -333,6 +350,67 @@ class ma_BO(object):
 
         ### --- Save parameters of the model
         #self._save_model_parameter_values()
+        
+        
+    def _true_marginal_argmax(self, parameter):
+        """
+        Computes argmax E_n[U(f(x))|U] (The abuse of notation can be misleading; note that the expectation is with
+        respect to the posterior distribution on f after n evaluations)
+        """
+        if self.utility.linear:
+            def val_func(X):
+                X = np.atleast_2d(X)
+                aux = self.objective.evaluate(X)[0]
+                fX = np.empty((self.n_attributes, X.shape[0]))
+                for j in range(self.n_attributes):
+                    fX[j,:] = aux[j][:,0]
+                valX = np.reshape(np.matmul(parameter, fX), (X.shape[0],1))
+                return -valX
+
+        else:
+            Z_samples = np.random.normal(size=(25,self.n_attributes))
+            def val_func(X):
+                X = np.atleast_2d(X)
+                for h in range(self.n_hyps_samples):
+                    self.model.set_hyperparameters(h)
+                    mean, var = self.model.predict_noiseless(X)
+                    std = np.sqrt(var)
+                    func_val = np.zeros((X.shape[0],1))
+                    for i in range(X.shape[0]):
+                        for Z in Z_samples:
+                            func_val[i,0] += self.utility.eval_func(parameter,mean[:,i] + np.multiply(std[:,i],Z))
+                #func_val /= self.n_hyps_samples*50
+                return -func_val
+            
+            def val_func_with_gradient(X):
+                X = np.atleast_2d(X)
+                for h in range(self.n_hyps_samples):
+                    self.model.set_hyperparameters(h)
+                    mean, var = self.model.predict_noiseless(X)
+                    std = np.sqrt(var)
+                    dmean_dX = self.model.posterior_mean_gradient(X)
+                    dstd_dX = self.model.posterior_variance_gradient(X)
+                    func_val = np.zeros((X.shape[0],1))
+                    func_gradient = np.zeros(X.shape)
+                    for i in range(X.shape[0]):
+                        for j in range(self.n_attributes):
+                            dstd_dX[j,i,:] /= (2*std[j,i])
+                        for Z in Z_samples:
+                            aux1 = mean[:,i] + np.multiply(Z, std[:,i])
+                            func_val[i,0] += self.utility.eval_func(parameter, aux1)
+                            aux2 = dmean_dX[:,i,:] + np.multiply(Z,dstd_dX[:,i,:])
+                            func_gradient[i,:] += np.matmul(self.utility.eval_gradient(parameter, aux1), aux2)
+                return -func_val, -func_gradient
+        
+        argmax = self.acquisition.optimizer.optimize_inner_func(f=val_func)[0]
+        #print(3)
+        #print('Marginal optimal point: {}'.format(argmax))
+        #print('Posterior mean and variance at marginal optimal point: {}'.format(self.model.predict(argmax)))
+        #print('Posterior mean and variance at true optimal points:')
+        #print(self.model.predict([np.pi,2.275]))
+        #print(self.model.predict([9.42478,2.475]))
+        return argmax
+    
         
     def convergence_assesment(self, n_iter=10, attribute=0, context=None):
         if self.objective is None:
@@ -446,6 +524,31 @@ class ma_BO(object):
         """
         return plot_convergence(self.historical_optimal_values, self.var_at_historical_optima, confidence_interval, filename)
 
+    
+    def plot_pareto_front(self):
+        #if self.full_parameter_support:
+            #utility_param_samples = self.utility.parameter_dist.support
+        #else:
+            #utility_param_samples = self.utility.parameter_dist.sample(50)
+        utility_param_samples = np.empty((100,2))
+        utility_param_samples[:,0] = np.linspace(0.,1.,100)
+        utility_param_samples[:,1] = 1 - utility_param_samples[:,0]
+        true_pareto_front = np.empty((len(utility_param_samples),2))  
+        estimated_pareto_front = np.empty((len(utility_param_samples),2))
+        for i in range(len(utility_param_samples)):
+            true_marginal_argmax = self._true_marginal_argmax(utility_param_samples[i])
+            true_pareto_front[i,:] = np.reshape(self.objective.evaluate(true_marginal_argmax)[0],(self.n_attributes,))
+            estimated_marginal_argmax = self._current_marginal_argmax(utility_param_samples[i])
+            estimated_pareto_front[i,:] = np.reshape(self.objective.evaluate(estimated_marginal_argmax)[0],(self.n_attributes,))
+            
+        plt.figure()
+        plt.plot(true_pareto_front[:,0], true_pareto_front[:,1], 'ko', label='True Pareto front (approximately)')
+        plt.plot(estimated_pareto_front[:,0], estimated_pareto_front[:,1], 'ro', label='Estimated Pareto front')
+        plt.xlabel('f_1')
+        plt.ylabel('f_2')
+        plt.title('random; noisy observations')
+        plt.legend(loc='lower left')
+        plt.show()
 
     def get_evaluations(self):
         return self.X.copy(), self.Y.copy()

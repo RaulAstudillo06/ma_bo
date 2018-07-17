@@ -107,13 +107,13 @@ class AcquisitionOptimizer(object):
 
         ## --- Selecting the anchor points and removing duplicates
         if self.type_anchor_points_logic == max_objective_anchor_points_logic:
-            anchor_points_generator = ObjectiveAnchorPointsGenerator(self.space, random_design_type, f, 28)
+            anchor_points_generator = ObjectiveAnchorPointsGenerator(self.space, random_design_type, f, 50)
         elif self.type_anchor_points_logic == thompson_sampling_anchor_points_logic:
             anchor_points_generator = ThompsonSamplingAnchorPointsGenerator(self.space, sobol_design_type, self.model)
            
         ## -- Select the anchor points (with context)
         anchor_points, anchor_points_values = anchor_points_generator.get(duplicate_manager=duplicate_manager, context_manager=self.context_manager, get_scores=True)
-        parallel = True
+        parallel = False
         if parallel:
             pool = Pool(4)
             optimized_points = pool.map(self._parallel_optimization_wrapper, anchor_points)
@@ -130,6 +130,7 @@ class AcquisitionOptimizer(object):
             x_min = np.atleast_2d(anchor_points[0])
         #x_min = np.atleast_2d(anchor_points[0])
         #fx_min = np.atleast_2d(anchor_points_values[0])
+        #print('Value of acquisition function at suggested point: {}'.format(fx_min))
         return x_min, fx_min
     
 
@@ -184,7 +185,7 @@ class AcquisitionOptimizer(object):
 
         ## --- Selecting the anchor points and removing duplicates
         if self.type_anchor_points_logic == max_objective_anchor_points_logic:
-            anchor_points_generator = ObjectiveAnchorPointsGenerator(self.space, random_design_type, f, 28)
+            anchor_points_generator = ObjectiveAnchorPointsGenerator(self.space, random_design_type, f, 100)
         elif self.type_anchor_points_logic == thompson_sampling_anchor_points_logic:
             anchor_points_generator = ThompsonSamplingAnchorPointsGenerator(self.space, sobol_design_type, self.model)
            

@@ -149,7 +149,7 @@ class OptLbfgs(Optimizer):
             f_df = lambda x: float(f(x)), df(x)
             
         if f_df is None and df is None:
-            res = scipy.optimize.fmin_l_bfgs_b(f, x0=x0, bounds=self.bounds, approx_grad=True, maxiter=self.maxiter) #factr=1e4
+            res = scipy.optimize.fmin_l_bfgs_b(f, x0=x0, bounds=self.bounds, approx_grad=True, maxiter=self.maxiter, factr=1e6)
         else:
             res = scipy.optimize.fmin_l_bfgs_b(f_df, x0=x0, bounds=self.bounds, maxiter=self.maxiter, factr=1e6)
 
@@ -161,7 +161,7 @@ class OptLbfgs(Optimizer):
             result_x = np.atleast_2d(res[0])
             result_fx = np.atleast_2d(res[1])
             
-        #print(res[2])
+        #print(res)
         return result_x, result_fx
 
 
@@ -174,7 +174,7 @@ class OptDirect(Optimizer):
     def __init__(self, bounds, maxiter=50):
         super(OptDirect, self).__init__(bounds)
         self.maxiter = maxiter
-        assert self.space.has_types['continuous']
+        #assert self.space.has_types['continuous']
 
     def optimize(self, x0, f=None, df=None, f_df=None):
         """

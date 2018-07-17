@@ -25,7 +25,7 @@ n_a = 2
 #model = multi_outputGP(output_dim=n_a)
 model = multi_outputGP(output_dim=n_a, exact_feval=[True,True])
 # --- Aquisition optimizer
-acq_opt = GPyOpt.optimization.AcquisitionOptimizer(optimizer='CMA', inner_optimizer='lbfgs', space=space)
+acq_opt = GPyOpt.optimization.AcquisitionOptimizer(optimizer='DIRECT', inner_optimizer='lbfgs', space=space)
 
 # --- Initial design
 initial_design = GPyOpt.experiment_design.initial_design('latin', space, 6)

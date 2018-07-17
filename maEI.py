@@ -37,15 +37,18 @@ class maEI(AcquisitionBase):
         """
         Computes the Expected Improvement per unit of cost
         """
-        full_support = True
+        full_support = False
+        if full_support:
+            self.utility_params_samples = self.utility.parameter_dist.support
+            self.utility_param_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
+        else:
+            self.utility_params_samples = self.utility.parameter_dist.sample(3)
         X =np.atleast_2d(X)
+        marginal_acqX = self._marginal_acq(X, self.utility_params_samples)           
         if full_support:
-            utility_params_samples = self.utility.parameter_dist.support
-            utility_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
-         
-        marginal_acqX = self._marginal_acq(X, utility_params_samples)           
-        if full_support:
-             acqX = np.matmul(marginal_acqX, utility_dist)
+             acqX = np.matmul(marginal_acqX, self.utility_param_dist)
+        else:
+            acqX = np.sum(marginal_acqX, axis=1)/len(self.utility_params_samples)
         acqX = np.reshape(acqX, (X.shape[0],1))
         return acqX
 
@@ -54,18 +57,24 @@ class maEI(AcquisitionBase):
         """
         Computes the Expected Improvement and its derivative (has a very easy derivative!)
         """
-        full_support = True
+        full_support = False
+        if full_support:
+            self.utility_params_samples = self.utility.parameter_dist.support
+            self.utility_param_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
+        else:
+            self.utility_params_samples = self.utility.parameter_dist.sample(3)
         X =np.atleast_2d(X)
-        if full_support:
-            utility_params_samples = self.utility.parameter_dist.support
-            utility_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
          
-        marginal_acqX, marginal_dacq_dX = self._marginal_acq_with_gradient(X, utility_params_samples)           
+        marginal_acqX, marginal_dacq_dX = self._marginal_acq_with_gradient(X, self.utility_params_samples)           
         if full_support:
-             acqX = np.matmul(marginal_acqX, utility_dist)
-             dacq_dX = np.tensordot(marginal_dacq_dX, utility_dist, 1)
+             acqX = np.matmul(marginal_acqX, self.utility_param_dist)
+             dacq_dX = np.tensordot(marginal_dacq_dX, self.utility_param_dist, 1)
+        else:
+            acqX = np.sum(marginal_acqX, axis=1)/len(self.utility_params_samples)
+            dacq_dX = np.sum(marginal_dacq_dX, axis=2)/len(self.utility_params_samples)
+            
         acqX = np.reshape(acqX,(X.shape[0], 1))
-        #dacq_dX = np.reshape(dacq_dX, X.shape)
+        dacq_dX = np.reshape(dacq_dX, X.shape)
         return acqX, dacq_dX
     
     
