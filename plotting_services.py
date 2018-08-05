@@ -159,43 +159,50 @@ def integrated_plot(bounds, input_dim, model, Xdata, Ydata, acquisition_function
             plt.legend(loc='upper left')
 
     elif input_dim == 2:
-        X1 = np.linspace(bounds[0][0], bounds[0][1], 200)
-        X2 = np.linspace(bounds[1][0], bounds[1][1], 200)
+        n = 20
+        X1 = np.linspace(bounds[0][0], bounds[0][1], n)
+        X2 = np.linspace(bounds[1][0], bounds[1][1], n)
         x1, x2 = np.meshgrid(X1, X2)
-        X = np.hstack((x1.reshape(200*200,1),x2.reshape(200*200,1)))
+        X = np.hstack((x1.reshape(n*n,1),x2.reshape(n*n,1)))
         acqu = acquisition_function(X)
+        #suggested_sample = np.atleast_2d(X[np.argmax(acqu.flatten()),:])
+        print(acqu)
         acqu_normalized = (-acqu - min(-acqu))/(max(-acqu - min(-acqu)))
-        acqu_normalized = acqu_normalized.reshape((200,200))
+        print(acqu_normalized)
+        acqu_normalized = acqu_normalized.reshape((n,n))
         mean, var = model.predict_noiseless(X)
         m = mean[0, :]
         v = var[0, :]
         plt.figure(figsize=(15,5))
         plt.subplot(1, 3, 1)
-        plt.contourf(X1, X2, m.reshape(200,200),100)
-        plt.plot(Xdata[:,0], Xdata[:,1], 'r.', markersize=10, label=u'Observations')
+        plt.contourf(X1, X2, m.reshape(n,n),100)
+        plt.plot(Xdata[:,0], Xdata[:,1], 'r.', markersize=10, label='Observations')
         plt.colorbar()
-        plt.xlabel('X1')
-        plt.ylabel('X2')
+        plt.xlabel('d')
+        plt.ylabel('theta')
         plt.title('Posterior mean')
         plt.axis((bounds[0][0],bounds[0][1],bounds[1][0],bounds[1][1]))
+        plt.legend(loc='upper left')
         ##
         plt.subplot(1, 3, 2)
-        plt.plot(Xdata[:,0], Xdata[:,1], 'r.', markersize=10, label=u'Observations')
-        plt.contourf(X1, X2, np.sqrt(v.reshape(200,200)),100)
+        plt.plot(Xdata[:,0], Xdata[:,1], 'r.', markersize=10, label='Observations')
+        plt.contourf(X1, X2, v.reshape(n,n),100)
         plt.colorbar()
-        plt.xlabel('X1')
-        plt.ylabel('X2')
-        plt.title('Posterior sd.')
+        plt.xlabel('d')
+        plt.ylabel('theta')
+        plt.title('Posterior variance')
         plt.axis((bounds[0][0],bounds[0][1],bounds[1][0],bounds[1][1]))
+        plt.legend(loc='upper left')
         ##
         plt.subplot(1, 3, 3)
         plt.contourf(X1, X2, acqu_normalized,100)
         plt.colorbar()
-        plt.plot(suggested_sample[:,0],suggested_sample[:,1],'r*', markersize=10)
-        plt.xlabel('X1')
-        plt.ylabel('X2')
+        plt.plot(suggested_sample[:,0],suggested_sample[:,1],'r*', markersize=10, label='Suggested point to evaluate')
+        plt.xlabel('d')
+        plt.ylabel('theta')
         plt.title('Acquisition function')
         plt.axis((bounds[0][0],bounds[0][1],bounds[1][0],bounds[1][1]))
+        plt.legend(loc='upper left')
     
     if filename!=None:
         savefig(filename)
@@ -219,11 +226,27 @@ def plot_acquisition(bounds, input_dim, acquisition_function, filename = None):
         plt.xlabel('x')
         plt.ylabel('a(x)')
         #plt.axvline(x=suggested_sample[len(suggested_sample)-1],color='r')
+    elif input_dim == 2:
+        X1 = np.linspace(bounds[0][0], bounds[0][1], 200)
+        X2 = np.linspace(bounds[1][0], bounds[1][1], 200)
+        x1, x2 = np.meshgrid(X1, X2)
+        X = np.hstack((x1.reshape(200*200,1),x2.reshape(200*200,1)))
+        acqu = acquisition_function(X)
+        acqu_normalized = (-acqu - min(-acqu))/(max(-acqu - min(-acqu)))
+        acqu_normalized = acqu_normalized.reshape((200,200))
+        plt.plot()
+        plt.contourf(X1, X2, acqu_normalized,100)
+        plt.colorbar()
+        #plt.plot(suggested_sample[:,0],suggested_sample[:,1],'r*', markersize=10)
+        plt.xlabel('d')
+        plt.ylabel('theta')
+        plt.title('Acquisition function')
+        plt.axis((bounds[0][0],bounds[0][1],bounds[1][0],bounds[1][1]))
         plt.legend(loc='upper left')
-        if filename!=None:
-            savefig(filename)
-        else:
-            plt.show()
+    if filename!=None:
+        savefig(filename)
+    else:
+        plt.show()
 
 
 def plot_convergence(historic_optimal_values, var_at_historical_optima=None, confidence_interval=False, filename=None):

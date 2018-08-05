@@ -11,10 +11,10 @@ import ma_bo
 import sys
 
 # --- Function to optimize
-#func  = GPyOpt.objective_examples.experiments2d.branin()
-func  = GPyOpt.objective_examples.experimentsNd.ackley(input_dim=5)
+func  = GPyOpt.objective_examples.experiments2d.branin()
+#func  = GPyOpt.objective_examples.experimentsNd.ackley(input_dim=5)
 # --- Attributes
-noise_var = [0.1, 0.1]
+#noise_var = [0.1, 0.5]
 #f = MultiObjective([func.f,func.f], noise_var=noise_var)
 f = MultiObjective([func.f,func.f])
 
@@ -32,7 +32,7 @@ model = multi_outputGP(output_dim=n_a, exact_feval=[True,True])
 acq_opt = GPyOpt.optimization.AcquisitionOptimizer(optimizer='lbfgs', space=space)
 
 # --- Initial design
-initial_design = GPyOpt.experiment_design.initial_design('latin', space, 12)
+initial_design = GPyOpt.experiment_design.initial_design('random', space, 3)
 #print(initial_design)
 
 # --- Parameter distribution
@@ -65,6 +65,6 @@ if len(sys.argv)>1:
     filename = './experiments/results_maEI' + str(sys.argv[1]) + '.txt'
 else:
     filename = None
-ma_bo.run_optimization(max_iter=max_iter, parallel=True, plot=True, results_file=filename)
-#ma_bo.convergence_assesment(n_iter=5)
+#ma_bo.run_optimization(max_iter=max_iter, parallel=True, plot=True, results_file=filename)
+ma_bo.convergence_assesment(n_iter=5)
 

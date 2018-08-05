@@ -227,7 +227,20 @@ class multi_outputGP(object):
         var = np.empty((self.output_dim,X.shape[0]))
         for j in range(self.output_dim):
             var[j,:] = self.output[j].posterior_variance_conditioned_on_next_point(X)[:,0]
-        return var    
+        return var
+    
+    
+    def posterior_variance_gradient_conditioned_on_next_point(self, X):
+        """
+        Computes the posterior covariance between points.
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        dvar_dX = np.empty((self.output_dim,X.shape[0],X.shape[1]))
+        for j in range(0,self.output_dim):
+            dvar_dX[j,:,:] = self.output[j].posterior_variance_gradient_conditioned_on_next_point(X)    
+        return dvar_dX
+
 
     def posterior_covariance_between_points(self,  X1,  X2):
         """

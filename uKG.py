@@ -16,7 +16,7 @@ class uKG(AcquisitionBase):
     :param utility: utility function. See utility class for details. 
     """
 
-    analytical_gradient_prediction = False
+    analytical_gradient_prediction = True
 
     def __init__(self, model, space, optimizer=None, cost_withGradients=None, utility=None):
         self.optimizer = optimizer
@@ -32,7 +32,7 @@ class uKG(AcquisitionBase):
         self.Z_samples = np.random.normal(size=(15,self.n_attributes))
         self.n_hyps_samples = min(5, self.model.number_of_hyps_samples())
 
-    def _compute_acq(self, X, parallel=False):
+    def _compute_acq(self, X, parallel=True):
         """
         Computes the aquisition function
         
@@ -65,11 +65,10 @@ class uKG(AcquisitionBase):
     def _marginal_acq(self, X, utility_params_samples):
         """
         """
-        marginal_acqX = np.zeros((X.shape[0],len(utility_params_samples)))
-        #self.model.restart_hyperparameters_counter()
-        #gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
-        n_w = len(self.W_samples)
-        n_z = len(self.Z_samples)
+        n_w = self.W_samples.shape[0]
+        n_z = self.Z_samples.shape[0]
+        L = len(utility_params_samples)
+        marginal_acqX = np.zeros((X.shape[0],L))
         
         for h in range(self.n_hyps_samples):
             self.model.set_hyperparameters(h)
@@ -77,187 +76,251 @@ class uKG(AcquisitionBase):
             for i in range(len(X)):
                 x = np.atleast_2d(X[i])
                 self.model.partial_precomputation_for_covariance(x)
-                #self.model.partial_precomputation_for_covariance_gradient(x)
+                self.model.partial_precomputation_for_covariance_gradient(x)
                 self.model.partial_precomputation_for_variance_conditioned_on_next_point(x)
-                for l in range(len(utility_params_samples)):
+                for l in range(L):
                     for W in self.W_samples:
                         aux = np.multiply(inv_sqrt_varX[:,i],W)
                         # inner function of maKG acquisition function.
                         def inner_func(X_inner):
-                            func_val = np.zeros((X_inner.shape[0],1))
                             X_inner = np.atleast_2d(X_inner)
+                            func_val = np.zeros((X_inner.shape[0],1))
                             cross_cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
                             posterior_std_conditioned_on_next_point = np.sqrt(self.model.posterior_variance_conditioned_on_next_point(X_inner))
                             a = self.model.posterior_mean(X_inner)
-                            b = np.multiply(cross_cov.T, aux).T
+                            a += np.multiply(cross_cov.T, aux).T
                             for Z in self.Z_samples:
-                                c = np.multiply(posterior_std_conditioned_on_next_point.T, Z).T
-                                func_val[:,0] += self.utility.eval_func(utility_params_samples[l],a+b+c)
+                                b = np.multiply(posterior_std_conditioned_on_next_point.T, Z).T
+                                func_val[:,0] += self.utility.eval_func(utility_params_samples[l],a+b)
                             return -func_val
                         # inner function of uKG acquisition function with its gradient.
-                        marginal_acqX[i,l] -= self.optimizer.optimize(f =inner_func)[1]
-                        #marginal_acqX[i,l] -= self.optimizer.optimize_inner_func(f =inner_func, f_df=inner_func_with_gradient)[1]
+                        def inner_func_w_gradient(X_inner):
+                            X_inner = np.atleast_2d(X_inner)
+                            func_val = np.zeros((X_inner.shape[0],1))
+                            func_gradient = np.zeros(X_inner.shape)
+                            cross_cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
+                            posterior_std_conditioned_on_x = np.sqrt(self.model.posterior_variance_conditioned_on_next_point(X_inner))
+                            dcross_cov_dX_inner = self.model.posterior_covariance_gradient_partially_precomputed(X_inner,x)[:,0,:]
+                            dposterior_var_conditioned_on_x_dX_inner = self.model.posterior_variance_gradient_conditioned_on_next_point(X_inner)[:,0,:]
+                            dposterior_std_conditioned_on_x_dX_inner = 0.5*np.multiply(np.reciprocal(posterior_std_conditioned_on_x),dposterior_var_conditioned_on_x_dX_inner)
+                            a = self.model.posterior_mean(X_inner)
+                            if False:
+                                print('test begin')
+                                x_aux = X_inner
+                                print(dposterior_std_conditioned_on_x_dX_inner)
+                                h = 1e-6
+                                x_aux[0,0] +=h
+                                aux2 = np.sqrt(self.model.posterior_variance_conditioned_on_next_point(x_aux))
+                                print((aux2-posterior_std_conditioned_on_x)/h)
+                                x_aux[0,0] -=h
+                                x_aux[0,1] +=h
+                                aux2 = np.sqrt(self.model.posterior_variance_conditioned_on_next_point(x_aux))
+                                print((aux2-posterior_std_conditioned_on_x)/h)
+                                x_aux[0,1] -=h
+                                print('test end')
+                            a += np.multiply(cross_cov.T, aux).T
+                            c  = self.model.posterior_mean_gradient(X_inner)[:,0,:]
+                            c += np.multiply(dcross_cov_dX_inner.T, aux).T
+                            for Z in self.Z_samples:
+                                b = np.multiply(posterior_std_conditioned_on_x.T, Z).T
+                                func_val[:,0] += self.utility.eval_func(utility_params_samples[l],a+b)
+                                d = np.multiply(dposterior_std_conditioned_on_x_dX_inner.T, Z).T
+                                func_gradient += np.matmul(self.utility.eval_gradient(utility_params_samples[l],a+b),c+d)
+                            return -func_val, -func_gradient
+                        #marginal_acqX[i,l] -= self.optimizer.optimize(f =inner_func)[1]
+                        marginal_acqX[i,l] -= self.optimizer.optimize_inner_func(f =inner_func, f_df=inner_func_w_gradient)[1]
                         
-        marginal_acqX = marginal_acqX/(self.n_hyps_samples*n_w*n_z)
+        marginal_acqX /= (self.n_hyps_samples*n_w*n_z)
         return marginal_acqX
     
     
     def _marginal_acq_parallel(self, X):
         """
         """
-        n_x = len(X)
-        marginal_acqX = np.zeros((n_x,len(self.utility_params_samples)))
-        #self.model.restart_hyperparameters_counter()
-        #gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
-        n_z = len(self.Z_samples)
+        n_x = X.shape[0]
+        marginal_acqX = np.zeros((X.shape[0],len(self.utility_params_samples)))
+        n_w = self.W_samples.shape[0]
+        n_z = self.Z_samples.shape[0]
         args = [[0 for i in range(2)] for j in range(n_x)]
         for i in range(n_x):
             args[i][0] = np.atleast_2d(X[i])   
         pool = Pool(4)
         for h in range(self.n_hyps_samples):
             self.model.set_hyperparameters(h)
-            varX = self.model.posterior_variance(X)
+            inv_sqrt_varX = (self.model.posterior_variance(X))**(-0.5)
             for i in range(n_x):
-                args[i][1] = varX[:,i]
+                args[i][1] = inv_sqrt_varX[:,i]
             marginal_acqX += np.atleast_2d(pool.map(self._parallel_acq_helper, args))
                  
-        marginal_acqX = marginal_acqX/(self.n_hyps_samples*n_z)
+        marginal_acqX /= (self.n_hyps_samples*n_w*n_z)
         return marginal_acqX
     
     
     def _parallel_acq_helper(self, args):
         """
         """
-        #
-        x = args[0]
-        varx = args[1]
         utility_params_samples = self.utility_params_samples
-        #
         L = len(utility_params_samples)
         marginal_acqx = np.zeros(L)
+        x = args[0]
+        inv_sqrt_varx = args[1]
         self.model.partial_precomputation_for_covariance(x)
         self.model.partial_precomputation_for_covariance_gradient(x)
+        self.model.partial_precomputation_for_variance_conditioned_on_next_point(x)
         for l in range(L):
-            aux = np.multiply(np.square(utility_params_samples[l]),np.reciprocal(varx)) # Precompute this quantity for computational efficiency.
-            for Z in self.Z_samples:
-                # inner function of maKG acquisition function.
+            for W in self.W_samples:
+                aux = np.multiply(inv_sqrt_varx,W)
+                # inner function of uKG acquisition function.
                 def inner_func(X_inner):
                     X_inner = np.atleast_2d(X_inner)
-                    muX_inner = self.model.posterior_mean(X_inner)
-                    cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
-                    a = np.matmul(utility_params_samples[l],muX_inner)
-                    #a = support[t]*muX_inner
-                    b = np.sqrt(np.matmul(aux,np.square(cov)))
-                    func_val = np.reshape(a + b*Z, (len(X_inner),1))
+                    func_val = np.zeros((X_inner.shape[0],1))
+                    cross_cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
+                    posterior_std_conditioned_on_next_point = np.sqrt(self.model.posterior_variance_conditioned_on_next_point(X_inner))
+                    a = self.model.posterior_mean(X_inner)
+                    a += np.multiply(cross_cov.T, aux).T
+                    for Z in self.Z_samples:
+                        b = np.multiply(posterior_std_conditioned_on_next_point.T, Z).T
+                        func_val[:,0] += self.utility.eval_func(utility_params_samples[l],a+b)
                     return -func_val
-                # inner function of maKG acquisition function with its gradient.
-                def inner_func_with_gradient(X_inner):
+                # inner function of uKG acquisition function with its gradient.
+                def inner_func_w_gradient(X_inner):
                     X_inner = np.atleast_2d(X_inner)
-                    muX_inner = self.model.posterior_mean(X_inner)
-                    dmu_dX_inner  = self.model.posterior_mean_gradient(X_inner)
-                    cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
-                    dcov_dX_inner = self.model.posterior_covariance_gradient_partially_precomputed(X_inner,x)
-                    a = np.matmul(utility_params_samples[l],muX_inner)
-                    #a = support[t]*muX_inner
-                    da_dX_inner = np.tensordot(utility_params_samples[l],dmu_dX_inner,axes=1)
-                    b = np.sqrt(np.matmul(aux,np.square(cov)))
-                    for k in range(X_inner.shape[1]):
-                        dcov_dX_inner[:,:,k] = np.multiply(cov,dcov_dX_inner[:,:,k])
-                    db_dX_inner  =  np.tensordot(aux,dcov_dX_inner,axes=1)
-                    db_dX_inner = np.multiply(np.reciprocal(b),db_dX_inner.T).T
-                    func_val = np.reshape(a + b*Z, (len(X_inner),1))
-                    func_gradient = np.reshape(da_dX_inner + db_dX_inner*Z, X_inner.shape)
+                    func_val = np.zeros((X_inner.shape[0],1))
+                    func_gradient = np.zeros(X_inner.shape)
+                    cross_cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
+                    posterior_std_conditioned_on_x = np.sqrt(self.model.posterior_variance_conditioned_on_next_point(X_inner))
+                    dcross_cov_dX_inner = self.model.posterior_covariance_gradient_partially_precomputed(X_inner,x)[:,0,:]
+                    dposterior_var_conditioned_on_x_dX_inner = self.model.posterior_variance_gradient_conditioned_on_next_point(X_inner)[:,0,:]
+                    dposterior_std_conditioned_on_x_dX_inner = 0.5*np.multiply(np.reciprocal(posterior_std_conditioned_on_x),dposterior_var_conditioned_on_x_dX_inner)
+                    a = self.model.posterior_mean(X_inner)
+                    a += np.multiply(cross_cov.T, aux).T
+                    c  = self.model.posterior_mean_gradient(X_inner)[:,0,:]
+                    c += np.multiply(dcross_cov_dX_inner.T, aux).T
+                    for Z in self.Z_samples:
+                        b = np.multiply(posterior_std_conditioned_on_x.T, Z).T
+                        func_val[:,0] += self.utility.eval_func(utility_params_samples[l],a+b)
+                        d = np.multiply(dposterior_std_conditioned_on_x_dX_inner.T, Z).T
+                        func_gradient += np.matmul(self.utility.eval_gradient(utility_params_samples[l],a+b),c+d)
                     return -func_val, -func_gradient
                 
-                marginal_acqx[l] -= self.optimizer.optimize_inner_func(f =inner_func, f_df=inner_func_with_gradient)[1]
-                
+                marginal_acqx[l] -= self.optimizer.optimize_inner_func(f =inner_func, f_df=inner_func_w_gradient)[1]          
         return marginal_acqx
     
     
     def _compute_acq_withGradients(self, X):
         """
         """
+        X = np.atleast_2d(X)
         full_support = True # If true, the full support of the utility function distribution will be used when computing the acquisition function value.
-        X =np.atleast_2d(X)
+        #X =np.atleast_2d(X)
         if full_support:
             utility_params_samples = self.utility.parameter_dist.support
             utility_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
-        #self.Z_samples = np.random.normal(size=10)
+            self.utility_params_samples = utility_params_samples
         # Compute marginal aquisition function and its gradient for every value of the utility function's parameters samples,
         marginal_acqX, marginal_dacq_dX = self._marginal_acq_with_gradient(X, utility_params_samples)
         if full_support:
             acqX = np.matmul(marginal_acqX, utility_dist)
             dacq_dX = np.tensordot(marginal_dacq_dX, utility_dist,1)
-        acqX = np.reshape(acqX,(X.shape[0], 1))
+        acqX = np.reshape(acqX, (X.shape[0],1))
         dacq_dX = np.reshape(dacq_dX, X.shape)
-        #print('test')
-        #print(acqX)
-        #print(dacq_dX)
         return acqX, dacq_dX
         
         
     def _marginal_acq_with_gradient(self, X, utility_params_samples):
         """
         """
+        X = np.atleast_2d(X)
         marginal_acqX = np.zeros((X.shape[0],len(utility_params_samples)))
         marginal_dacq_dX =  np.zeros((X.shape[0],X.shape[1],len(utility_params_samples)))
-        #gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
-        #n_z = 3 #len(self.Z_samples)
-        Z_samples2 = self.Z_samples #np.random.normal(size=4)
-        n_z = len(Z_samples2)
+        n_w = self.W_samples.shape[0]
+        n_z = self.Z_samples.shape[0]
         for h in range(self.n_hyps_samples):
             self.model.set_hyperparameters(h)
-            varX = self.model.posterior_variance(X)
+            inv_sqrt_varX = (self.model.posterior_variance(X))**(-0.5)
+            inv_varX_noiseless = np.reciprocal(self.model.posterior_variance_noiseless(X))
             dvar_dX = self.model.posterior_variance_gradient(X)
-            for i in range(0,len(X)):
+            for i in range(len(X)):
                 x = np.atleast_2d(X[i])
                 self.model.partial_precomputation_for_covariance(x)
                 self.model.partial_precomputation_for_covariance_gradient(x)
-                for l in range(0,len(utility_params_samples)):
-                    # Precompute aux1 and aux2 for computational efficiency.
-                    aux = np.multiply(np.square(utility_params_samples[l]),np.reciprocal(varX[:,i])) 
-                    aux2 = np.multiply(np.square(utility_params_samples[l]),np.square(np.reciprocal(varX[:,i]))) 
-                    for Z in Z_samples2: #self.Z_samples:
+                self.model.partial_precomputation_for_variance_conditioned_on_next_point(x)
+                for l in range(len(utility_params_samples)):
+                    for W in self.W_samples:
+                        aux = np.multiply(inv_sqrt_varX[:,i],W)
                         # inner function of maKG acquisition function.
                         def inner_func(X_inner):
-                            #X_inner = np.atleast_2d(X_inner)
-                            muX_inner = self.model.posterior_mean(X_inner) #self.model.predict(X_inner)[0]
-                            cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
-                            a = np.matmul(utility_params_samples[l],muX_inner)
-                            #a = utility_params_samplesl]*muX_inner
-                            b = np.sqrt(np.matmul(aux,np.square(cov)))
-                            func_val = np.reshape(a + b*Z, (X_inner.shape[0],1))
+                            X_inner = np.atleast_2d(X_inner)
+                            func_val = np.zeros((X_inner.shape[0],1))
+                            cross_cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
+                            posterior_std_conditioned_on_next_point = np.sqrt(self.model.posterior_variance_conditioned_on_next_point(X_inner))
+                            a = self.model.posterior_mean(X_inner)
+                            a += np.multiply(cross_cov.T, aux).T
+                            for Z in self.Z_samples:
+                                b = np.multiply(posterior_std_conditioned_on_next_point.T, Z).T
+                                func_val[:,0] += self.utility.eval_func(utility_params_samples[l],a+b)
                             return -func_val
-                        # inner function of maKG acquisition function with its gradient.
-                        def inner_func_with_gradient(X_inner):
-                            X_inner = np.atleast_2d(X_inner) # Necessary
-                            muX_inner = self.model.posterior_mean(X_inner)
-                            dmu_dX_inner  = self.model.posterior_mean_gradient(X_inner)
-                            cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
-                            dcov_dX_inner = self.model.posterior_covariance_gradient_partially_precomputed(X_inner,x)
-                            a = np.matmul(utility_params_samples[l],muX_inner)
-                            #a = utility_params_samples[l]*muX_inner
-                            b = np.sqrt(np.matmul(aux,np.square(cov)))
-                            da_dX_inner = np.tensordot(utility_params_samples[l], dmu_dX_inner, axes=1)                        
-                            for k in range(X_inner.shape[1]):
-                                dcov_dX_inner[:,:,k] = np.multiply(cov,dcov_dX_inner[:,:,k])
-                            db_dX_inner  =  np.tensordot(aux,dcov_dX_inner,axes=1)
-                            db_dX_inner = np.multiply(np.reciprocal(b),db_dX_inner.T).T
-                            func_val = np.reshape(a + b*Z, (X_inner.shape[0],1))
-                            func_gradient = np.reshape(da_dX_inner + db_dX_inner*Z, X_inner.shape)
+                        # inner function of uKG acquisition function with its gradient.
+                        def inner_func_w_gradient(X_inner):
+                            X_inner = np.atleast_2d(X_inner)
+                            func_val = np.zeros((X_inner.shape[0],1))
+                            func_gradient = np.zeros(X_inner.shape)
+                            cross_cov = self.model.posterior_covariance_between_points_partially_precomputed( X_inner,x)[:,:,0]
+                            posterior_std_conditioned_on_x = np.sqrt(self.model.posterior_variance_conditioned_on_next_point(X_inner))
+                            dcross_cov_dX_inner = self.model.posterior_covariance_gradient_partially_precomputed(X_inner,x)[:,0,:]
+                            dposterior_var_conditioned_on_x_dX_inner = self.model.posterior_variance_gradient_conditioned_on_next_point(X_inner)[:,0,:]
+                            dposterior_std_conditioned_on_x_dX_inner = 0.5*np.multiply(np.reciprocal(posterior_std_conditioned_on_x),dposterior_var_conditioned_on_x_dX_inner)
+                            a = self.model.posterior_mean(X_inner)
+                            a += np.multiply(cross_cov.T, aux).T
+                            c  = self.model.posterior_mean_gradient(X_inner)[:,0,:]
+                            c += np.multiply(dcross_cov_dX_inner.T, aux).T
+                            for Z in self.Z_samples:
+                                b = np.multiply(posterior_std_conditioned_on_x.T, Z).T
+                                func_val[:,0] += self.utility.eval_func(utility_params_samples[l],a+b)
+                                d = np.multiply(dposterior_std_conditioned_on_x_dX_inner.T, Z).T
+                                func_gradient += np.matmul(self.utility.eval_gradient(utility_params_samples[l],a+b),c+d)
                             return -func_val, -func_gradient
-                        x_opt, opt_val = self.optimizer.optimize_inner_func(f =inner_func, f_df=inner_func_with_gradient)
+
+                        x_opt, opt_val = self.optimizer.optimize_inner_func(f =inner_func, f_df=inner_func_w_gradient)
                         marginal_acqX[i,l] -= opt_val
                         #x_opt = np.atleast_2d(x_opt)
-                        cov_opt = self.model.posterior_covariance_between_points_partially_precomputed(x_opt,x)[:,0,0]
-                        dcov_opt_dx = self.model.posterior_covariance_gradient(x,x_opt)[:,0,:]
-                        b = np.sqrt(np.dot(aux,np.square(cov_opt)))
-                        marginal_dacq_dX[i,:,l] += 0.5*Z*np.reciprocal(b)*np.matmul(aux2,(2*np.multiply(varX[:,i]*cov_opt,dcov_opt_dx.T) - np.multiply(np.square(cov_opt),dvar_dX[:,i,:].T)).T)
+                        cross_cov = self.model.posterior_covariance_between_points_partially_precomputed(x_opt,x)[:,:,0]
+                        dcross_cov_dx = self.model.posterior_covariance_gradient(x,x_opt)[:,0,:]
+                        posterior_std_conditioned_on_x = np.sqrt(self.model.posterior_variance_conditioned_on_next_point(x_opt))
+                        a = self.model.posterior_mean(x_opt)
+                        a += np.multiply(cross_cov.T, aux).T
+                        aux2 = -0.5*np.multiply(cross_cov.T,(inv_sqrt_varX[:,i]**3)*W)
+                        c = np.multiply(dcross_cov_dx.T, aux).T + np.multiply(dvar_dX[:,i,:].T,aux2).T
+                        tmp = cross_cov[:,0]*inv_varX_noiseless[:,i]
+                        dposterior_std_conditioned_on_x_dx = (-np.multiply(dcross_cov_dx.T,tmp).T + 0.5*np.multiply(dvar_dX[:,i,:].T,np.square(tmp)).T)/posterior_std_conditioned_on_x
+                
+                        if False:
+                            print('test begin')
+                            x_aux = x
+                            print(dposterior_std_conditioned_on_x_dx)
+                            h = 1e-7
+                            x_aux[0,0] +=h
+                            self.model.partial_precomputation_for_variance_conditioned_on_next_point(x_aux)
+                            aux2 = np.sqrt(self.model.posterior_variance_conditioned_on_next_point(x_opt))
+                            print((aux2-posterior_std_conditioned_on_x)/h)
+                            x_aux[0,0] -=h
+                            x_aux[0,1] +=h
+                            self.model.partial_precomputation_for_variance_conditioned_on_next_point(x_aux)
+                            aux2 = np.sqrt(self.model.posterior_variance_conditioned_on_next_point(x_opt))
+                            print((aux2-posterior_std_conditioned_on_x)/h)
+                            x_aux[0,1] -=h
+                            self.model.partial_precomputation_for_variance_conditioned_on_next_point(x_aux)
+                            print('test end')
+                        for Z in self.Z_samples:
+                            b = np.multiply(posterior_std_conditioned_on_x.T, Z).T
+                            d = np.multiply(dposterior_std_conditioned_on_x_dx.T, Z).T
+                            marginal_dacq_dX[i,:,l] += np.matmul(self.utility.eval_gradient(utility_params_samples[l],a+b),c+d)
         
-        marginal_acqX = marginal_acqX/(self.n_hyps_samples*n_z)            
-        marginal_dacq_dX = marginal_dacq_dX/(self.n_hyps_samples*n_z)
+        marginal_acqX /= (self.n_hyps_samples*n_w*n_z)       
+        marginal_dacq_dX /= (self.n_hyps_samples*n_w*n_z)
         return marginal_acqX, marginal_dacq_dX
     
     
     def update_Z_samples(self, n_samples):
-        self.Z_samples = np.random.normal(size=10)
+        self.W_samples = np.random.normal(size=self.W_samples.shape)
+        self.Z_samples = np.random.normal(size=self.Z_samples.shape)

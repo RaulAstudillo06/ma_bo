@@ -28,9 +28,9 @@ class maKG(AcquisitionBase):
             print('LBC acquisition does now make sense with cost. Cost set to constant.')
             self.cost_withGradients = constant_cost_withGradients
         
-        self.Z_samples = np.random.normal(size=7)
+        self.Z_samples = np.random.normal(size=10)
         self.n_hyps_samples = min(5, self.model.number_of_hyps_samples())
-        self.full_support = False #If true, the full support of the utility function distribution will be used when computing the acquisition function value.
+        self.full_support = True #If true, the full support of the utility function distribution will be used when computing the acquisition function value.
 
     def _compute_acq(self, X, parallel=True):
         """

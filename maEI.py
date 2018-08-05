@@ -37,7 +37,7 @@ class maEI(AcquisitionBase):
         """
         Computes the Expected Improvement per unit of cost
         """
-        full_support = False
+        full_support = True
         if full_support:
             self.utility_params_samples = self.utility.parameter_dist.support
             self.utility_param_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
@@ -57,7 +57,7 @@ class maEI(AcquisitionBase):
         """
         Computes the Expected Improvement and its derivative (has a very easy derivative!)
         """
-        full_support = False
+        full_support = True
         if full_support:
             self.utility_params_samples = self.utility.parameter_dist.support
             self.utility_param_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)

@@ -237,6 +237,15 @@ class GPModel(BOModel):
         :param X2: other input observations
         """
         return self.current_model.posterior_variance_conditioned_on_next_point(X)
+    
+    
+    def posterior_variance_gradient_conditioned_on_next_point(self, X):
+        """
+        Computes the posterior covariance between points.
+        :param X1: some input observations
+        :param X2: other input observations
+        """
+        return self.current_model.posterior_variance_gradient_conditioned_on_next_point(X)
         
     
     def posterior_covariance_between_points(self, X1, X2):

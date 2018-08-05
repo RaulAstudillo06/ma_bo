@@ -52,7 +52,7 @@ class ma_BO(object):
         self.n_attributes = self.model.output_dim
         self.n_hyps_samples = min(5, self.model.number_of_hyps_samples())
         self.n_parameter_samples = 15
-        self.full_parameter_support = False
+        self.full_parameter_support = True
 
     
     def _current_max_value(self):
@@ -169,13 +169,13 @@ class ma_BO(object):
                         for Z in Z_samples:
                             aux1 = mean[:,i] + np.multiply(Z, std[:,i])
                             func_val[i,0] += self.utility.eval_func(parameter, aux1)
-                            aux2 = dmean_dX[:,i,:] + np.multiply(Z,dstd_dX[:,i,:])
+                            aux2 = dmean_dX[:,i,:] + np.multiply(dstd_dX[:,i,:].T, Z).T
                             func_gradient[i,:] += np.matmul(self.utility.eval_gradient(parameter, aux1), aux2)
                 return -func_val, -func_gradient
         
         argmax = self.acquisition.optimizer.optimize_inner_func(f=val_func, f_df=val_func_with_gradient)[0]
         #print(3)
-        #print('Marginal optimal point: {}'.format(argmax))
+        print('Marginal optimal point: {}'.format(argmax))
         #print('Posterior mean and variance at marginal optimal point: {}'.format(self.model.predict(argmax)))
         #print('Posterior mean and variance at true optimal points:')
         #print(self.model.predict([np.pi,2.275]))
@@ -265,8 +265,8 @@ class ma_BO(object):
                 self._update_model()
             self.model.get_model_parameters_names()
             self.model.get_model_parameters()
-            include_var = False
-            if include_var: 
+
+            if self.utility.linear: 
                 current_max_val, var_at_current_max = self._current_max_value_and_var()
                 self.var_at_historical_optima.append(var_at_current_max)
             else:
@@ -283,8 +283,8 @@ class ma_BO(object):
         if results_file is not None:
             self.save_results(results_file)
         if plot:
-            #self.plot_convergence(confidence_interval=True)
-            self.plot_pareto_front()
+            self.plot_convergence(confidence_interval=True)
+            #self.plot_pareto_front()
         
         # --- Print the desired result in files
         #if self.evaluations_file is not None:
@@ -345,7 +345,8 @@ class ma_BO(object):
         ### --- input that goes into the model (is unziped in case there are categorical variables)
         X_inmodel = self.space.unzip_inputs(self.X)
         Y_inmodel = list(self.Y)
-        
+        #print(X_inmodel)
+        #print(Y_inmodel)
         self.model.updateModel(X_inmodel, Y_inmodel)
 
         ### --- Save parameters of the model

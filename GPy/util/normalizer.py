@@ -60,7 +60,7 @@ class Standardize(_Norm):
     def scale_by(self, Y):
         Y = np.ma.masked_invalid(Y, copy=False)
         self.mean = Y.mean(0).view(np.ndarray)
-        self.std = 1 #Y.std(0).view(np.ndarray)
+        self.std = 1#Y.std(0).view(np.ndarray)
     def normalize(self, Y):
         super(Standardize, self).normalize(Y)
         return (Y-self.mean)/self.std
