@@ -142,7 +142,7 @@ def integrated_plot(bounds, input_dim, model, Xdata, Ydata, acquisition_function
         for j in range(1):
             m = mean[j,:]
             v = var[j,:]
-            plt.figure(j)
+            plt.figure()
             plt.plot(x_grid, m, 'k-',lw=1,alpha = 0.6, label ='posterior mean')
             plt.plot(x_grid, m-1.96*np.sqrt(v), 'g--', alpha = 0.2, label ='confidence interval')
             plt.plot(x_grid, m+1.96*np.sqrt(v), 'g--', alpha=0.2)
@@ -151,10 +151,10 @@ def integrated_plot(bounds, input_dim, model, Xdata, Ydata, acquisition_function
             plt.axvline(x=suggested_sample[len(suggested_sample)-1],color='r')
             factor = max(m+1.96*np.sqrt(v))-min(m-1.96*np.sqrt(v))
     
-            #plt.plot(x_grid,0.2*factor*acqu_normalized-abs(min(m-1.96*np.sqrt(v)))-0.25*factor, 'r-',lw=2,label ='acquisition (arbitrary units)')
+            plt.plot(x_grid,0.2*factor*acqu_normalized-abs(min(m-1.96*np.sqrt(v)))-0.25*factor, 'r-',lw=2,label ='acquisition (arbitrary units)')
             plt.xlabel('x')
             plt.ylabel('f(x)')
-            plt.ylim(min(m-1.96*np.sqrt(v))-0.10*factor,  max(m+1.96*np.sqrt(v))+0.25*factor)
+            plt.ylim(min(m-1.96*np.sqrt(v))-0.25*factor,  max(m+1.96*np.sqrt(v))+0.25*factor)
             plt.axvline(x=suggested_sample[len(suggested_sample)-1],color='r')
             plt.legend(loc='upper left')
 

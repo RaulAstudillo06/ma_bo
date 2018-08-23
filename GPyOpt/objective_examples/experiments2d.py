@@ -68,7 +68,7 @@ class rosenbrock(function2d):
         if X.shape[1] != self.input_dim:
             return 'Wrong input dimension'
         else:
-            fval = 100*(X[:,1]-X[:,0]**2)**2 + (X[:,0]-1)**2
+            fval = (100*(X[:,1]-X[:,0]**2)**2 + (X[:,0]-1)**2)/10
             if self.sd ==0:
                 noise = np.zeros(n).reshape(n,1)
             else:

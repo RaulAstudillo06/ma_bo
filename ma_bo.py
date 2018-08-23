@@ -426,7 +426,7 @@ class ma_BO(object):
             self._update_model()
         for i in range(n_iter):
             self.suggested_sample = self._compute_next_evaluations()
-            filename = './experiments/2d' + str(i) + '.eps'
+            filename = './experiments/1d' + str(i) + '.eps'
             model_to_plot = deepcopy(self.model)
             integrated_plot(self.acquisition.space.get_bounds(),
                                     self.X.shape[1],
