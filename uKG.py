@@ -18,9 +18,10 @@ class uKG(AcquisitionBase):
 
     analytical_gradient_prediction = True
 
-    def __init__(self, model, space, optimizer=None, cost_withGradients=None, utility=None):
+    def __init__(self, model, space, optimizer=None, cost_withGradients=None, utility=None, normalize=False):
         self.optimizer = optimizer
         self.utility = utility
+        self.normalize = normalize
         super(uKG, self).__init__(model, space, optimizer, cost_withGradients=cost_withGradients)
         if cost_withGradients == None:
             self.cost_withGradients = constant_cost_withGradients
@@ -28,37 +29,44 @@ class uKG(AcquisitionBase):
             print('LBC acquisition does now make sense with cost. Cost set to constant.')
             self.cost_withGradients = constant_cost_withGradients
         self.n_attributes = self.model.output_dim
-        self.W_samples = np.random.normal(size=(15,self.n_attributes))
-        self.Z_samples = np.random.normal(size=(15,self.n_attributes))
-        self.n_hyps_samples = min(5, self.model.number_of_hyps_samples())
+        self.W_samples = np.random.normal(size=(2,self.n_attributes))
+        self.Z_samples = np.random.normal(size=(2,self.n_attributes))
+        self.n_hyps_samples = min(2, self.model.number_of_hyps_samples())
+        self.use_full_support = self.utility.parameter_dist.use_full_support # If true, the full support of the utility function distribution will be used when computing the acquisition function value.
+        self.acq_mean = 0.
+        self.acq_std = 1.
+        if self.use_full_support:
+            self.utility_params_samples = self.utility.parameter_dist.support
+            self.utility_prob_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
+        else:
+            self.utility_params_samples = self.utility.parameter_dist.sample(1)
 
-    def _compute_acq(self, X, parallel=True):
+    def _compute_acq(self, X, parallel=False):
         """
         Computes the aquisition function
         
         :param X: set of points at which the acquisition function is evaluated. Should be a 2d array.
         """
-        full_support = True # If true, the full support of the utility function distribution will be used when computing the acquisition function value.
-        #X =np.atleast_2d(X)
-        if full_support:
-            utility_params_samples = self.utility.parameter_dist.support
-            utility_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
-            self.utility_params_samples = utility_params_samples
-        #self.Z_samples = np.random.normal(size=10)
-        
         if parallel and len(X)>1:
             marginal_acqX = self._marginal_acq_parallel(X)
         else:
-            marginal_acqX = self._marginal_acq(X, utility_params_samples)
+            marginal_acqX = self._marginal_acq(X, self.utility_params_samples)
             #print('parallel')
             #print(marginal_acqX)
         #marginal_acqX = self._marginal_acq(X, utility_params_samples)
         #print('sequential')
         #print(marginal_acqX)    
-        if full_support:
-            acqX = np.matmul(marginal_acqX, utility_dist)
+        if self.use_full_support:
+            acqX = np.matmul(marginal_acqX, self.utility_prob_dist)
+        else:
+            acqX = np.sum(marginal_acqX, axis=1) / len(self.utility_params_samples)
         acqX = np.reshape(acqX, (X.shape[0],1))
-        #print(acqX)
+        if self.normalize:
+            sorted_acqX = np.sort(acqX, axis=None)
+            self.acq_mean = np.mean(sorted_acqX[-6:])
+            self.acq_std = np.std(sorted_acqX[-6:])
+            print('acq mean and std changed')
+        acqX = (acqX-self.acq_mean)/self.acq_std
         return acqX
     
     
@@ -203,7 +211,7 @@ class uKG(AcquisitionBase):
                         func_gradient += np.matmul(self.utility.eval_gradient(utility_params_samples[l],a+b),c+d)
                     return -func_val, -func_gradient
                 
-                marginal_acqx[l] -= self.optimizer.optimize_inner_func(f =inner_func, f_df=inner_func_w_gradient)[1]          
+                marginal_acqx[l] -= self.optimizer.optimize_inner_func(f =inner_func, f_df=inner_func_w_gradient)[1]
         return marginal_acqx
     
     
@@ -211,19 +219,18 @@ class uKG(AcquisitionBase):
         """
         """
         X = np.atleast_2d(X)
-        full_support = True # If true, the full support of the utility function distribution will be used when computing the acquisition function value.
-        #X =np.atleast_2d(X)
-        if full_support:
-            utility_params_samples = self.utility.parameter_dist.support
-            utility_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
-            self.utility_params_samples = utility_params_samples
-        # Compute marginal aquisition function and its gradient for every value of the utility function's parameters samples,
-        marginal_acqX, marginal_dacq_dX = self._marginal_acq_with_gradient(X, utility_params_samples)
-        if full_support:
-            acqX = np.matmul(marginal_acqX, utility_dist)
-            dacq_dX = np.tensordot(marginal_dacq_dX, utility_dist,1)
+        # Compute marginal aquisition function and its gradient for every value of the utility function's parameters samples
+        marginal_acqX, marginal_dacq_dX = self._marginal_acq_with_gradient(X, self.utility_params_samples)
+        if self.use_full_support:
+            acqX = np.matmul(marginal_acqX, self.utility_prob_dist)
+            dacq_dX = np.tensordot(marginal_dacq_dX, self.utility_prob_dist, 1)
+        else:
+            acqX = np.sum(marginal_acqX, axis=1) / len(self.utility_params_samples)
+            dacq_dX = np.sum(marginal_dacq_dX, axis=2) / len(self.utility_params_samples)
         acqX = np.reshape(acqX, (X.shape[0],1))
         dacq_dX = np.reshape(dacq_dX, X.shape)
+        acqX = (acqX - self.acq_mean) / self.acq_std
+        dacq_dX /= self.acq_std
         return acqX, dacq_dX
         
         
@@ -324,3 +331,5 @@ class uKG(AcquisitionBase):
     def update_Z_samples(self, n_samples):
         self.W_samples = np.random.normal(size=self.W_samples.shape)
         self.Z_samples = np.random.normal(size=self.Z_samples.shape)
+        if not self.use_full_support:
+            self.utility_params_samples = self.utility.parameter_dist.sample(5)
