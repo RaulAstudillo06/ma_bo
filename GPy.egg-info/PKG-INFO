@@ -1,4 +1,4 @@
-Metadata-Version: 1.1
+Metadata-Version: 2.1
 Name: GPy
 Version: 1.8.5
 Summary: The Gaussian Process Toolbox
@@ -7,7 +7,6 @@ Author: GPy Authors: https://github.com/SheffieldML/GPy/graphs/contributors
 Author-email: gpy.authors@gmail.com
 License: BSD 3-clause
 Download-URL: https://github.com/SheffieldML/GPy/
-Description-Content-Type: UNKNOWN
 Description: 
         
         Please refer to the github homepage for detailed instructions on installation and usage.
@@ -28,3 +27,7 @@ Classifier: Intended Audience :: Science/Research
 Classifier: Intended Audience :: Developers
 Classifier: Topic :: Software Development
 Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Provides-Extra: docs
+Provides-Extra: notebook
+Provides-Extra: optional
+Provides-Extra: plotting

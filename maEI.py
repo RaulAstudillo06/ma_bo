@@ -31,21 +31,22 @@ class maEI(AcquisitionBase):
         else:
             print('LBC acquisition does now make sense with cost. Cost set to constant.')
             self.cost_withGradients = constant_cost_withGradients
+        self.use_full_support = self.utility.parameter_dist.use_full_support
+        self.n_hyps_samples = 1
 
 
     def _compute_acq(self, X):
         """
         Computes the Expected Improvement per unit of cost
         """
-        full_support = True
-        if full_support:
+        if self.use_full_support:
             self.utility_params_samples = self.utility.parameter_dist.support
             self.utility_param_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
         else:
             self.utility_params_samples = self.utility.parameter_dist.sample(3)
         X =np.atleast_2d(X)
         marginal_acqX = self._marginal_acq(X, self.utility_params_samples)           
-        if full_support:
+        if self.use_full_support:
              acqX = np.matmul(marginal_acqX, self.utility_param_dist)
         else:
             acqX = np.sum(marginal_acqX, axis=1)/len(self.utility_params_samples)
@@ -57,8 +58,7 @@ class maEI(AcquisitionBase):
         """
         Computes the Expected Improvement and its derivative (has a very easy derivative!)
         """
-        full_support = True
-        if full_support:
+        if self.use_full_support:
             self.utility_params_samples = self.utility.parameter_dist.support
             self.utility_param_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
         else:
@@ -66,7 +66,7 @@ class maEI(AcquisitionBase):
         X =np.atleast_2d(X)
          
         marginal_acqX, marginal_dacq_dX = self._marginal_acq_with_gradient(X, self.utility_params_samples)           
-        if full_support:
+        if self.use_full_support:
              acqX = np.matmul(marginal_acqX, self.utility_param_dist)
              dacq_dX = np.tensordot(marginal_dacq_dX, self.utility_param_dist, 1)
         else:
@@ -81,9 +81,7 @@ class maEI(AcquisitionBase):
     def _marginal_acq(self, X, utility_params_samples):
         L = len(utility_params_samples)
         marginal_acqX = np.zeros((X.shape[0],L))
-        n_h = 5 # Number of GP hyperparameters samples.
-        #gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
-        #for h in gp_hyperparameters_samples:
+        n_h = self.n_hyps_samples # Number of GP hyperparameters samples.
         for h in range(n_h):
             self.model.set_hyperparameters(h)
             meanX, varX = self.model.predict(X)
@@ -104,9 +102,7 @@ class maEI(AcquisitionBase):
         L = len(utility_params_samples)
         marginal_acqX = np.zeros((X.shape[0],L))
         marginal_dacq_dX = np.zeros((X.shape[0], X.shape[1], L))
-        n_h = 5 # Number of GP hyperparameters samples.
-        #gp_hyperparameters_samples = self.model.get_hyperparameters_samples(n_h)
-        #for h in gp_hyperparameters_samples:
+        n_h = self.n_hyps_samples # Number of GP hyperparameters samples.
         for h in range(n_h):
             self.model.set_hyperparameters(h)
             meanX, varX = self.model.predict(X)

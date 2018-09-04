@@ -4,6 +4,7 @@
 from .optimizer import OptLbfgs, OptSgd, OptDirect, OptCma, apply_optimizer, choose_optimizer, apply_optimizer_inner
 from .anchor_points_generator import ObjectiveAnchorPointsGenerator, ThompsonSamplingAnchorPointsGenerator
 from ..core.task.space import Design_space
+from GPyOpt.experiment_design import initial_design
 import multiprocessing
 from pathos.multiprocessing import ProcessingPool as Pool
 import numpy as np
@@ -27,11 +28,13 @@ class AcquisitionOptimizer(object):
         - 'CMA': covariance matrix adaptation.
     """
 
-    def __init__(self, space, optimizer='lbfgs', inner_optimizer='lbfgs', **kwargs):
+    def __init__(self, space, optimizer='lbfgs', inner_optimizer='lbfgs2', n_starting=100, n_anchor=8, **kwargs):
 
         self.space              = space
         self.optimizer_name     = optimizer
         self.inner_optimizer_name     = inner_optimizer
+        self.n_starting = n_starting
+        self.n_anchor = n_anchor
         self.kwargs             = kwargs
 
         ## -- save extra options than can be passed to the optimizer
@@ -107,30 +110,30 @@ class AcquisitionOptimizer(object):
 
         ## --- Selecting the anchor points and removing duplicates
         if self.type_anchor_points_logic == max_objective_anchor_points_logic:
-            anchor_points_generator = ObjectiveAnchorPointsGenerator(self.space, random_design_type, f, 24)
+            anchor_points_generator = ObjectiveAnchorPointsGenerator(self.space, random_design_type, f, self.n_starting)
         elif self.type_anchor_points_logic == thompson_sampling_anchor_points_logic:
             anchor_points_generator = ThompsonSamplingAnchorPointsGenerator(self.space, sobol_design_type, self.model)
            
         ## -- Select the anchor points (with context)
-        anchor_points, anchor_points_values = anchor_points_generator.get(duplicate_manager=duplicate_manager, context_manager=self.context_manager, get_scores=True)
-        print('anchor points')
-        print(anchor_points)
-        print(anchor_points_values)
+        anchor_points, anchor_points_values = anchor_points_generator.get(num_anchor=self.n_anchor, duplicate_manager=duplicate_manager, context_manager=self.context_manager, get_scores=True)
+        #print('anchor points')
+        #print(anchor_points)
+        #print(anchor_points_values)
         parallel = True
         if parallel:
             pool = Pool(4)
             optimized_points = pool.map(self._parallel_optimization_wrapper, anchor_points)
-            print('optimized points')
-            print(optimized_points)
+            #print('optimized points')
+            #print(optimized_points)
         else:
             #pass
             optimized_points = [apply_optimizer(self.optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]                 
                         
         x_min, fx_min = min(optimized_points, key=lambda t:t[1])
-        if np.asscalar(anchor_points_values[0]) < np.asscalar(fx_min):
-            print('anchor_point was best found')
-            fx_min = np.atleast_2d(anchor_points_values[0])
-            x_min = np.atleast_2d(anchor_points[0])
+        #if np.asscalar(anchor_points_values[0]) < np.asscalar(fx_min):
+            #print('anchor_point was best found')
+            #fx_min = np.atleast_2d(anchor_points_values[0])
+            #x_min = np.atleast_2d(anchor_points[0])
         #x_min = np.atleast_2d(anchor_points[0])
         #fx_min = np.atleast_2d(anchor_points_values[0])
         #print('Value of acquisition function at suggested point: {}'.format(fx_min))
@@ -188,17 +191,18 @@ class AcquisitionOptimizer(object):
 
         ## --- Selecting the anchor points and removing duplicates
         if self.type_anchor_points_logic == max_objective_anchor_points_logic:
-            anchor_points_generator = ObjectiveAnchorPointsGenerator(self.space, random_design_type, f, 64)
+            anchor_points_generator = ObjectiveAnchorPointsGenerator(self.space, latin_design_type, f, 64)
         elif self.type_anchor_points_logic == thompson_sampling_anchor_points_logic:
             anchor_points_generator = ThompsonSamplingAnchorPointsGenerator(self.space, sobol_design_type, self.model)
            
         ## -- Select the anchor points (with context)
-        anchor_points, anchor_points_values = anchor_points_generator.get(num_anchor=5, duplicate_manager=duplicate_manager, context_manager=self.context_manager, get_scores=True)
+        anchor_points, anchor_points_values = anchor_points_generator.get(num_anchor=8, duplicate_manager=duplicate_manager, context_manager=self.context_manager, get_scores=True)
         #print(anchor_points)
         
         ## --- Applying local optimizers at the anchor points and update bounds of the optimizer (according to the context)
         optimized_points = [apply_optimizer_inner(self.inner_optimizer, a, f=f, df=None, f_df=f_df, duplicate_manager=duplicate_manager, context_manager=self.context_manager, space = self.space) for a in anchor_points]
-
+        #print('inner optimized points')
+        #print(optimized_points)
         x_min, fx_min = min(optimized_points, key=lambda t:t[1])
         #x_min = np.atleast_2d(anchor_points[0])
         #fx_min = np.atleast_2d(anchor_points_values[0])       

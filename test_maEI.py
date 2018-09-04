@@ -60,7 +60,7 @@ acquisition = maEI(model, space, optimizer=acq_opt,utility=U)
 evaluator = GPyOpt.core.evaluators.Sequential(acquisition)
 ma_bo = ma_bo.ma_BO(model, space, f, acquisition, evaluator, initial_design)
 #bo = GPyOpt.methods.ModularBayesianOptimization(model, space, f, acquisition, evaluator, initial_design)
-max_iter  = 57
+max_iter  = 60
 if len(sys.argv)>1:
     filename = './experiments/results_maEI' + str(sys.argv[1]) + '.txt'
 else:

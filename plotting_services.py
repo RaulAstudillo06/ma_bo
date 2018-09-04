@@ -272,3 +272,19 @@ def plot_convergence(historic_optimal_values, var_at_historical_optima=None, con
         savefig(filename)
     else:
         plt.show()
+
+
+def plot_pareto_front_comparison(estimated_pareto_front, true_pareto_front=None, approximately=True):
+    plt.figure()
+    if true_pareto_front is not None:
+        if approximately:
+            label = 'True Pareto front (approximately)'
+        else:
+            label = 'True Pareto front'
+        plt.plot(true_pareto_front[0, :], true_pareto_front[1, :], 'ko', label=label)
+    plt.plot(estimated_pareto_front[0, :], estimated_pareto_front[1, :], 'ro', label='Estimated Pareto front')
+    plt.xlabel('f_1')
+    plt.ylabel('f_2')
+    plt.title('ParEGO; noiseless observations')
+    plt.legend(loc='lower left')
+    plt.show()

@@ -60,3 +60,7 @@ target/
 *.pyc
 .cache
 __pycache__/
+*.png
+*.dat
+*.idea
+*.pstats

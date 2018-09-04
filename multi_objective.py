@@ -36,24 +36,37 @@ class MultiObjective(Objective):
             self.objective[j] = GPyOpt.core.task.SingleObjective(func=self.func[j],objective_name=self.objective_name[j])
 
 
-    def evaluate(self, x):
+    def evaluate(self, X):
         """
         Performs the evaluation of the objectives at x.
         """
         f_eval = [None]*self.output_dim #np.zeros(self.output_dim)
         cost_eval = 0
-        for j in range(0,self.output_dim):
-            f_eval[j] = self.objective[j].evaluate(x)[0]
+        for j in range(self.output_dim):
+            f_eval[j] = self.objective[j].evaluate(X)[0]
         return f_eval, cost_eval
-    
-    
-    def evaluate_w_noise(self, x):
+
+
+    def evaluate_as_array(self, X):
         """
         Performs the evaluation of the objectives at x.
         """
-        f_noisy_eval, cost_eval = self.evaluate(x)
+        f_eval = np.empty((self.output_dim, X.shape[0]))
+        for j in range(self.output_dim):
+            f_eval[j, :] = self.objective[j].evaluate(X)[0][:,0]
+        return f_eval
+
+    
+    def evaluate_w_noise(self, X):
+        """
+        Performs the evaluation of the objectives at x.
+        """
+        f_noisy_eval, cost_eval = self.evaluate(X)
         if self.noise_var  is not None:           
-            for j in range(0,self.output_dim):
+            for j in range(self.output_dim):
                 f_noisy_eval[j] += np.random.normal(scale = np.sqrt(self.noise_var[j]))
             
         return f_noisy_eval, cost_eval
+
+    def get_output_dim(self):
+        return self.output_dim

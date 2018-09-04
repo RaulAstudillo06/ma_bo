@@ -29,7 +29,7 @@ model = multi_outputGP(output_dim=n_a,noise_var=noise_var)
 #model = multi_outputGP(output_dim=n_a)
 #model = multi_outputGP(output_dim=n_a, exact_feval=[True,True])
 # --- Aquisition optimizer
-acq_opt = GPyOpt.optimization.AcquisitionOptimizer(optimizer='lbfgs', inner_optimizer='lbfgs', space=space)
+acq_opt = GPyOpt.optimization.AcquisitionOptimizer(optimizer='lbfgs', inner_optimizer='lbfgs2', space=space)
 
 # --- Initial design
 initial_design = GPyOpt.experiment_design.initial_design('random', space, 6)
@@ -43,7 +43,6 @@ parameter_distribution = ParameterDistribution(support=support,prob_dist=prob_di
 
 # --- Utility function
 def U_func(parameter,y):
-
     return np.dot(parameter,y)
 
 def dU_func(parameter,y):
@@ -51,13 +50,13 @@ def dU_func(parameter,y):
 
 U = Utility(func=U_func,dfunc=dU_func,parameter_dist=parameter_distribution,linear=True)
 
-#print(utility.func(support[0],[1,1]))
-
 # --- Aquisition function
 acquisition = maKG(model, space, optimizer=acq_opt,utility=U)
 
 # --- Evaluator
 evaluator = GPyOpt.core.evaluators.Sequential(acquisition)
+
+# --- Put all together
 ma_bo = ma_bo.ma_BO(model, space, f, acquisition, evaluator, initial_design)
 max_iter  = 100
 if len(sys.argv)>1:
@@ -65,4 +64,3 @@ if len(sys.argv)>1:
 else:
     filename = None
 ma_bo.run_optimization(max_iter=max_iter, parallel=True, plot=True, results_file=filename)
-#ma_bo.convergence_assesment(n_iter=5)

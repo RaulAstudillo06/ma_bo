@@ -1,7 +1,6 @@
 AUTHORS.txt
 LICENSE.txt
 MANIFEST.in
-README.md
 setup.cfg
 GPy/__init__.py
 GPy/__version__.py
@@ -92,6 +91,7 @@ GPy/kern/src/sde_matern.py
 GPy/kern/src/sde_standard_periodic.py
 GPy/kern/src/sde_static.py
 GPy/kern/src/sde_stationary.py
+GPy/kern/src/se.py
 GPy/kern/src/spline.py
 GPy/kern/src/splitKern.py
 GPy/kern/src/standard_periodic.py

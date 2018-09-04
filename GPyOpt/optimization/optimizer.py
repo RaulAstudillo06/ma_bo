@@ -2,6 +2,7 @@
 # Licensed under the BSD 3-clause license (see LICENSE.txt)
 
 import numpy as np
+import cma
 
 
 class Optimizer(object):
@@ -28,7 +29,7 @@ class OptSgd(Optimizer):
     '''
     (Stochastic) gradient descent algorithm.
     '''
-    def __init__(self, bounds, maxiter=50):
+    def __init__(self, bounds, maxiter=100):
         super(OptSgd, self).__init__(bounds)
         self.maxiter = maxiter
 
@@ -43,10 +44,9 @@ class OptSgd(Optimizer):
         x = x0
         #print(x)
         fx, dfx = f_df(x)
-        for t  in range(self.maxiter):
-            if t>48:
-                print(t)
-            x = x - 0.3*np.power(t+1,-0.5)*dfx
+        for t in range(self.maxiter):
+            #x = x - 0.3*np.power(t+1,-0.5)*dfx
+            x = x - 0.3*dfx
             #print(x)
             for k in range(x.shape[1]):
                 if x[0,k] < self.bounds[k][0]:
@@ -56,18 +56,19 @@ class OptSgd(Optimizer):
                     
             #f_previous = fx
             fx, dfx = f_df(x)
-            print('test begin')
-            print(dfx)
-            h = 1e-6
-            x[0,0] +=h
-            f_aux = f(x)
-            print((f_aux-fx)/h)
-            x[0,0] -=h
-            x[0,1] +=h
-            f_aux = f(x)
-            print((f_aux-fx)/h)
-            x[0,1] -=h
-            print('test end')
+            if True:
+                print('test begin')
+                print(dfx)
+                h = 1e-6
+                x[0,0] +=h
+                f_aux = f(x)
+                print((f_aux-fx)/h)
+                x[0,0] -=h
+                x[0,5] +=h
+                f_aux = f(x)
+                print((f_aux-fx)/h)
+                x[0,5] -=h
+                print('test end')
             #if np.absolute(fx - f_previous) < 1e-5:
                 #break       
         
@@ -129,11 +130,52 @@ class OptADAM(Optimizer):
         return x, f_x
     
 
+class OptAGD(Optimizer):
+    '''
+    ADAM algorithm.
+    '''
+    def __init__(self, bounds, maxiter=30):
+        super(OptAGD, self).__init__(bounds)
+        self.maxiter = maxiter
+
+    def optimize(self, x0, f=None, df=None, f_df=None):
+        """
+        :param x0: initial point for a local optimizer.
+        :param f: function to optimize.
+        :param df: gradient of the function to optimize.
+        :param f_df: returns both the function to optimize and its gradient.
+        """
+        x = x0
+        y = np.copy(x0)
+        lambd = 0
+        gamma = 1
+        beta_inverse = 100
+
+        for t  in range(1, self.maxiter + 1):
+            f_x, g_x = f_df(x)
+            tmp_y = x - beta_inverse*g_x
+            x = (1 - gamma)*tmp_y + gamma*y
+            y =  np.copy(tmp_y)
+            tmp_lamb  = (1 + np.sqrt(1 + 4*lambd))/2
+            gamma = (1 - lambd)/tmp_lamb
+            lamb = np.copy(tmp_lamb)
+
+            for k in range(x.shape[1]):
+                if x[0,k] < self.bounds[k][0]:
+                    x[0,k] = self.bounds[k][0]
+                elif x[0,k] > self.bounds[k][1]:
+                    x[0,k] = self.bounds[k][1]
+                    
+        x = np.atleast_2d(x)      
+        f_x = f_df(x)[0]
+        return x, f_x
+    
+
 class OptLbfgs(Optimizer):
     '''
     Wrapper for l-bfgs-b to use the true or the approximate gradients.
     '''
-    def __init__(self, bounds, maxiter=50):
+    def __init__(self, bounds, maxiter=500):
         super(OptLbfgs, self).__init__(bounds)
         self.maxiter = maxiter
 
@@ -149,7 +191,7 @@ class OptLbfgs(Optimizer):
             f_df = lambda x: float(f(x)), df(x)
             
         if f_df is None and df is None:
-            res = scipy.optimize.fmin_l_bfgs_b(f, x0=x0, bounds=self.bounds, approx_grad=True, maxiter=self.maxiter, factr=1e6)
+            res = scipy.optimize.fmin_l_bfgs_b(f, x0=x0, bounds=self.bounds, approx_grad=True, maxiter=self.maxiter, factr=1e3, pgtol=1e-20)
         else:
             res = scipy.optimize.fmin_l_bfgs_b(f_df, x0=x0, bounds=self.bounds, maxiter=self.maxiter, factr=1e6)
 
@@ -161,6 +203,44 @@ class OptLbfgs(Optimizer):
             result_x = np.atleast_2d(res[0])
             result_fx = np.atleast_2d(res[1])
             
+        #print(res)
+        return result_x, result_fx
+
+
+class OptLbfgs2(Optimizer):
+    '''
+    Wrapper for l-bfgs-b to use the true or the approximate gradients.
+    '''
+
+    def __init__(self, bounds, maxiter=50):
+        super(OptLbfgs2, self).__init__(bounds)
+        self.maxiter = maxiter
+
+    def optimize(self, x0, f=None, df=None, f_df=None):
+        """
+        :param x0: initial point for a local optimizer.
+        :param f: function to optimize.
+        :param df: gradient of the function to optimize.
+        :param f_df: returns both the function to optimize and its gradient.
+        """
+        import scipy.optimize
+        if f_df is None and df is not None:
+            f_df = lambda x: float(f(x)), df(x)
+
+        if f_df is None and df is None:
+            res = scipy.optimize.fmin_l_bfgs_b(f, x0=x0, bounds=self.bounds, approx_grad=True, maxiter=self.maxiter,
+                                               factr=1e6)
+        else:
+            res = scipy.optimize.fmin_l_bfgs_b(f_df, x0=x0, bounds=self.bounds, maxiter=self.maxiter, factr=1e5, pgtol=1e-15)
+
+        ### --- We check here if the the optimizer moved. It it didn't we report x0 and f(x0) as scipy can return NaNs
+        if res[2]['task'] == b'ABNORMAL_TERMINATION_IN_LNSRCH':
+            result_x = np.atleast_2d(x0)
+            result_fx = np.atleast_2d(f(x0))
+        else:
+            result_x = np.atleast_2d(res[0])
+            result_fx = np.atleast_2d(res[1])
+
         #print(res)
         return result_x, result_fx
 
@@ -223,7 +303,7 @@ class OptCma(Optimizer):
                 return g
             lB = np.asarray(self.bounds)[:,0]
             uB = np.asarray(self.bounds)[:,1]
-            x = cma.fmin(CMA_f_wrapper(f), x0, 0.6, options={"bounds":[lB, uB], "verbose":-1})[0]
+            x = cma.fmin(CMA_f_wrapper(f), x0, 0.6, options={"bounds":[lB, uB], "verbose":-1, "maxfevals":100})[0]
             return np.atleast_2d(x), f(np.atleast_2d(x))
         except ImportError:
             print("Cannot find cma library, please install it to use this option.")
@@ -395,7 +475,10 @@ def choose_optimizer(optimizer_name, bounds):
         """          
         if optimizer_name == 'lbfgs':
             optimizer = OptLbfgs(bounds)
-        
+
+        elif optimizer_name == 'lbfgs2':
+            optimizer = OptLbfgs2(bounds)
+
         elif optimizer_name == 'sgd':
             optimizer = OptSgd(bounds)
             
@@ -407,6 +490,9 @@ def choose_optimizer(optimizer_name, bounds):
 
         elif optimizer_name == 'CMA':
             optimizer = OptCma(bounds)
+
+        elif optimizer_name == 'agd':
+            optimizer = OptAGD(bounds)
         else:
             raise InvalidVariableNameError('Invalid optimizer selected.')
 

@@ -13,9 +13,10 @@ from GPyOpt.util.duplicate_manager import DuplicateManager
 from GPyOpt.core.errors import InvalidConfigError
 from GPyOpt.core.task.cost import CostModel
 from GPyOpt.optimization.acquisition_optimizer import ContextManager
-from plotting_services import plot, plot_convergence, plot_acquisition, integrated_plot
+from plotting_services import plot, plot_convergence, plot_acquisition, integrated_plot, plot_pareto_front_comparison
 from pathos.multiprocessing import ProcessingPool as Pool
 from copy import deepcopy
+from pareto_front_services import compute_estimated_pareto_front, approximate_true_pareto_front
 
 
 class ma_BO(object):
@@ -35,7 +36,7 @@ class ma_BO(object):
     """
 
 
-    def __init__(self, model, space, objective, acquisition, evaluator, X_init, Y_init=None, cost = None, normalize_Y = False, model_update_interval = 1):
+    def __init__(self, model, space, objective, acquisition, evaluator, X_init, Y_init=None, cost = None, normalize_Y = False, model_update_interval = 1, true_pareto_frontier=None, true_pareto_front=None):
         self.model = model
         self.space = space
         self.objective = objective
@@ -50,9 +51,15 @@ class ma_BO(object):
         self.var_at_historical_optima = []
         self.cost = CostModel(cost)
         self.n_attributes = self.model.output_dim
-        self.n_hyps_samples = min(5, self.model.number_of_hyps_samples())
+        self.n_hyps_samples = min(1, self.model.number_of_hyps_samples())
         self.n_parameter_samples = 15
-        self.full_parameter_support = True
+        self.full_parameter_support = self.utility.parameter_dist.use_full_support
+        if true_pareto_front is None and true_pareto_frontier is not None:
+            self.true_pareto_front = objective.evaluate_as_array(true_pareto_frontier)
+        else:
+            self.true_pareto_front = true_pareto_front
+        #
+        self.context = None
 
     
     def _current_max_value(self):
@@ -70,7 +77,7 @@ class ma_BO(object):
                 #print(a)
                 val += self.utility.eval_func(utility_param_support[i],marginal_max_val)*utility_param_dist[i]
         else:
-            utility_param_samples = self.utility.parameter_dist.sample(50)
+            utility_param_samples = self.utility.parameter_dist.sample(self.n_parameter_samples)
             for i in range(len(utility_param_samples)):
                 marginal_argmax = self._current_marginal_argmax(utility_param_samples[i])
                 marginal_max_val = np.reshape(self.objective.evaluate(marginal_argmax)[0],(self.n_attributes,))
@@ -96,7 +103,7 @@ class ma_BO(object):
         return val, var
     
     
-    def _current_max_value2(self):
+    def _current_max_value_parallel(self):
         """
         Computes E_n[U(f(x_max))|f], where U is the utility function, f is the true underlying ojective function and x_max = argmax E_n[U(f(x))|U]. See
         function _marginal_max_value_so_far below.
@@ -174,12 +181,7 @@ class ma_BO(object):
                 return -func_val, -func_gradient
         
         argmax = self.acquisition.optimizer.optimize_inner_func(f=val_func, f_df=val_func_with_gradient)[0]
-        #print(3)
-        print('Marginal optimal point: {}'.format(argmax))
-        #print('Posterior mean and variance at marginal optimal point: {}'.format(self.model.predict(argmax)))
-        #print('Posterior mean and variance at true optimal points:')
-        #print(self.model.predict([np.pi,2.275]))
-        #print(self.model.predict([9.42478,2.475]))
+        #argmax = self.acquisition.optimizer.optimize_inner_func(f=val_func)[0]
         return argmax
                 
           
@@ -241,7 +243,7 @@ class ma_BO(object):
             #if not ((self.num_acquisitions < self.max_iter) and (self._distance_last_evaluations() > self.eps)):
             
             tmp = self.suggested_sample
-            self.suggested_sample = self._compute_next_evaluations()
+            self.suggested_sample = self.compute_next_evaluations()
             if np.all(self.suggested_sample == tmp):
                 self.suggested_sample = self._perturb(self.suggested_sample)
             try:
@@ -249,7 +251,7 @@ class ma_BO(object):
             except:
                 pass
             # --- Augment X
-            self.X = np.vstack((self.X,self.suggested_sample))
+            self.X = np.vstack((self.X, self.suggested_sample))
             #
             #print('Acquisition value at optimal points:')
             #print(self.acquisition.acquisition_function(np.atleast_2d([np.pi,2.275])))
@@ -284,7 +286,7 @@ class ma_BO(object):
             self.save_results(results_file)
         if plot:
             self.plot_convergence(confidence_interval=True)
-            #self.plot_pareto_front()
+            #self._plot_pareto_front()
         
         # --- Print the desired result in files
         #if self.evaluations_file is not None:
@@ -294,6 +296,16 @@ class ma_BO(object):
         #plt.plot(range(self.num_acquisitions),value_so_far)
         #plt.show()
         #np.savetxt('test_file.txt',value_so_far)
+        
+    
+    def best_evaluated(self):
+        if self.n_attributes > 1:
+            raise InvalidConfigError("This option is not avialable with multiple objectives")
+        else:
+            scores = self.Y[0].flatten()
+            x_best = X[np.argsort(-scores)[0],:]
+            fx_best = -np.sort(-scores)
+            return x_best, fx_best
 
 
     def evaluate_objective(self):
@@ -303,7 +315,7 @@ class ma_BO(object):
         print('Suggested point to evaluate: {}'.format(self.suggested_sample))
         self.Y_new, cost_new = self.objective.evaluate_w_noise(self.suggested_sample)
         self.cost.update_cost_model(self.suggested_sample, cost_new)   
-        for j in range(self.objective.output_dim):
+        for j in range(self.n_attributes):
             #print(self.Y_new[j])
             self.Y[j] = np.vstack((self.Y[j],self.Y_new[j]))
 
@@ -323,7 +335,7 @@ class ma_BO(object):
         return perturbed_x
     
 
-    def _compute_next_evaluations(self, pending_zipped_X=None, ignored_zipped_X=None):
+    def compute_next_evaluations(self, pending_zipped_X=None, ignored_zipped_X=None):
         """
         Computes the location of the new evaluation (optimizes the acquisition in the standard case).
         :param pending_zipped_X: matrix of input configurations that are in a pending state (i.e., do not have an evaluation yet).
@@ -352,67 +364,6 @@ class ma_BO(object):
         ### --- Save parameters of the model
         #self._save_model_parameter_values()
         
-        
-    def _true_marginal_argmax(self, parameter):
-        """
-        Computes argmax E_n[U(f(x))|U] (The abuse of notation can be misleading; note that the expectation is with
-        respect to the posterior distribution on f after n evaluations)
-        """
-        if self.utility.linear:
-            def val_func(X):
-                X = np.atleast_2d(X)
-                aux = self.objective.evaluate(X)[0]
-                fX = np.empty((self.n_attributes, X.shape[0]))
-                for j in range(self.n_attributes):
-                    fX[j,:] = aux[j][:,0]
-                valX = np.reshape(np.matmul(parameter, fX), (X.shape[0],1))
-                return -valX
-
-        else:
-            Z_samples = np.random.normal(size=(25,self.n_attributes))
-            def val_func(X):
-                X = np.atleast_2d(X)
-                for h in range(self.n_hyps_samples):
-                    self.model.set_hyperparameters(h)
-                    mean, var = self.model.predict_noiseless(X)
-                    std = np.sqrt(var)
-                    func_val = np.zeros((X.shape[0],1))
-                    for i in range(X.shape[0]):
-                        for Z in Z_samples:
-                            func_val[i,0] += self.utility.eval_func(parameter,mean[:,i] + np.multiply(std[:,i],Z))
-                #func_val /= self.n_hyps_samples*50
-                return -func_val
-            
-            def val_func_with_gradient(X):
-                X = np.atleast_2d(X)
-                for h in range(self.n_hyps_samples):
-                    self.model.set_hyperparameters(h)
-                    mean, var = self.model.predict_noiseless(X)
-                    std = np.sqrt(var)
-                    dmean_dX = self.model.posterior_mean_gradient(X)
-                    dstd_dX = self.model.posterior_variance_gradient(X)
-                    func_val = np.zeros((X.shape[0],1))
-                    func_gradient = np.zeros(X.shape)
-                    for i in range(X.shape[0]):
-                        for j in range(self.n_attributes):
-                            dstd_dX[j,i,:] /= (2*std[j,i])
-                        for Z in Z_samples:
-                            aux1 = mean[:,i] + np.multiply(Z, std[:,i])
-                            func_val[i,0] += self.utility.eval_func(parameter, aux1)
-                            aux2 = dmean_dX[:,i,:] + np.multiply(Z,dstd_dX[:,i,:])
-                            func_gradient[i,:] += np.matmul(self.utility.eval_gradient(parameter, aux1), aux2)
-                return -func_val, -func_gradient
-        
-        argmax = self.acquisition.optimizer.optimize_inner_func(f=val_func)[0]
-        #print(3)
-        #print('Marginal optimal point: {}'.format(argmax))
-        #print('Posterior mean and variance at marginal optimal point: {}'.format(self.model.predict(argmax)))
-        #print('Posterior mean and variance at true optimal points:')
-        #print(self.model.predict([np.pi,2.275]))
-        #print(self.model.predict([9.42478,2.475]))
-        return argmax
-    
-        
     def convergence_assesment(self, n_iter=10, attribute=0, context=None):
         if self.objective is None:
             raise InvalidConfigError("Cannot run the optimization loop without the objective function")
@@ -425,7 +376,7 @@ class ma_BO(object):
                 self.cost.update_cost_model(self.X, cost_values)
             self._update_model()
         for i in range(n_iter):
-            self.suggested_sample = self._compute_next_evaluations()
+            self.suggested_sample = self.compute_next_evaluations()
             filename = './experiments/1d' + str(i) + '.eps'
             model_to_plot = deepcopy(self.model)
             integrated_plot(self.acquisition.space.get_bounds(),
@@ -466,7 +417,7 @@ class ma_BO(object):
                 self.cost.update_cost_model(self.X, cost_values)
             self._update_model()
 
-        self.suggested_sample = self._compute_next_evaluations()
+        self.suggested_sample = self.compute_next_evaluations()
 
         model_to_plot = deepcopy(self.model)
         
@@ -526,30 +477,20 @@ class ma_BO(object):
         return plot_convergence(self.historical_optimal_values, self.var_at_historical_optima, confidence_interval, filename)
 
     
-    def plot_pareto_front(self):
-        #if self.full_parameter_support:
-            #utility_param_samples = self.utility.parameter_dist.support
-        #else:
-            #utility_param_samples = self.utility.parameter_dist.sample(50)
-        utility_param_samples = np.empty((100,2))
-        utility_param_samples[:,0] = np.linspace(0.,1.,100)
-        utility_param_samples[:,1] = 1 - utility_param_samples[:,0]
-        true_pareto_front = np.empty((len(utility_param_samples),2))  
-        estimated_pareto_front = np.empty((len(utility_param_samples),2))
-        for i in range(len(utility_param_samples)):
-            true_marginal_argmax = self._true_marginal_argmax(utility_param_samples[i])
-            true_pareto_front[i,:] = np.reshape(self.objective.evaluate(true_marginal_argmax)[0],(self.n_attributes,))
-            estimated_marginal_argmax = self._current_marginal_argmax(utility_param_samples[i])
-            estimated_pareto_front[i,:] = np.reshape(self.objective.evaluate(estimated_marginal_argmax)[0],(self.n_attributes,))
-            
-        plt.figure()
-        plt.plot(true_pareto_front[:,0], true_pareto_front[:,1], 'ko', label='True Pareto front (approximately)')
-        plt.plot(estimated_pareto_front[:,0], estimated_pareto_front[:,1], 'ro', label='Estimated Pareto front')
-        plt.xlabel('f_1')
-        plt.ylabel('f_2')
-        plt.title('random; noisy observations')
-        plt.legend(loc='lower left')
-        plt.show()
+    def _plot_pareto_front(self, approx_true_pareto_front=True):
+        """
+
+        :param approximate_true_pareto_front:
+        :return:
+        """
+        model_to_plot = deepcopy(self.model)
+        estimated_pareto_front = compute_estimated_pareto_front(self.n_attributes, model_to_plot, self.space, self.objective)
+        if self.true_pareto_front is None and approx_true_pareto_front:
+            self.true_pareto_front = approximate_true_pareto_front(self.n_attributes, self.space, self.objective)
+            approximately = True
+        else:
+            approximately = False
+        return plot_pareto_front_comparison(estimated_pareto_front, self.true_pareto_front, approximately)
 
     def get_evaluations(self):
         return self.X.copy(), self.Y.copy()

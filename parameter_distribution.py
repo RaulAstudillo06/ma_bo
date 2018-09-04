@@ -15,10 +15,15 @@ class ParameterDistribution(object):
             self.support = support
             self.prob_dist = prob_dist
             self.sample_generator = sample_generator
+        if support is not None and len(support) < 20:
+            self.use_full_support = True
+        else:
+            self.use_full_support = False
     
     def sample(self, n_samples):
         if self.continuous:
             parameter_samples = self.sample_generator(n_samples)
         else:
-            parameter_samples = self.sample_discrete(support,prob_dist)
+            indices = np.random.choice(int(len(self.support)), size=n_samples, p=self.prob_dist)
+            parameter_samples = self.support[indices,:]
         return parameter_samples

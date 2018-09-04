@@ -2,7 +2,8 @@
 # Licensed under the BSD 3-clause license (see LICENSE.txt)
 
 from .base import BOModel
-from .gpmodel import GPModel, GPModel2, GPModel_MCMC
+from .gpmodel import GPModel
+from .gpmodel_fixed_hyps import GPModelFixedHyps
 from .rfmodel import RFModel
 from .warpedgpmodel import WarpedGPModel
 from .input_warped_gpmodel import InputWarpedGPModel

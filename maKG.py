@@ -18,9 +18,10 @@ class maKG(AcquisitionBase):
 
     analytical_gradient_prediction = True
 
-    def __init__(self, model, space, optimizer=None, cost_withGradients=None, utility=None):
+    def __init__(self, model, space, optimizer=None, cost_withGradients=None, utility=None, normalize=True):
         self.optimizer = optimizer
         self.utility = utility
+        self.normalize = normalize
         super(maKG, self).__init__(model, space, optimizer, cost_withGradients=cost_withGradients)
         if cost_withGradients == None:
             self.cost_withGradients = constant_cost_withGradients
@@ -29,8 +30,16 @@ class maKG(AcquisitionBase):
             self.cost_withGradients = constant_cost_withGradients
         
         self.Z_samples = np.random.normal(size=10)
-        self.n_hyps_samples = min(5, self.model.number_of_hyps_samples())
-        self.full_support = True #If true, the full support of the utility function distribution will be used when computing the acquisition function value.
+        self.n_hyps_samples = min(1, self.model.number_of_hyps_samples())
+        self.use_full_support = self.utility.parameter_dist.use_full_support #If true, the full support of the utility function distribution will be used when computing the acquisition function value.
+        self.acq_mean = 0.
+        self.acq_std = 1.
+        if self.use_full_support:
+            self.utility_params_samples = self.utility.parameter_dist.support
+            self.utility_prob_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
+        else:
+            self.utility_params_samples = self.utility.parameter_dist.sample(1)
+
 
     def _compute_acq(self, X, parallel=True):
         """
@@ -39,14 +48,7 @@ class maKG(AcquisitionBase):
         :param X: set of points at which the acquisition function is evaluated. Should be a 2d array.
         """
         #X =np.atleast_2d(X)
-        if self.full_support:
-            self.utility_params_samples = self.utility.parameter_dist.support
-            utility_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
-        else:
-            self.utility_params_samples = self.utility.parameter_dist.sample(1)
-        #self.Z_samples = np.random.normal(size=10)
-        
-        if parallel and len(X)>1:
+        if parallel and X.shape[0] > 1:
             marginal_acqX = self._marginal_acq_parallel(X)
         else:
             marginal_acqX = self._marginal_acq(X, self.utility_params_samples)
@@ -55,12 +57,18 @@ class maKG(AcquisitionBase):
         #marginal_acqX = self._marginal_acq(X, utility_params_samples)
         #print('sequential')
         #print(marginal_acqX)    
-        if self.full_support:
-            acqX = np.matmul(marginal_acqX, utility_dist)
+        if self.use_full_support:
+            acqX = np.matmul(marginal_acqX, self.utility_prob_dist)
         else:
             acqX = np.sum(marginal_acqX, axis=1)/len(self.utility_params_samples)
         acqX = np.reshape(acqX, (X.shape[0],1))
-        #print(acqX)
+        if self.normalize and X.shape[0] > 1:
+            sorted_acqX = np.sort(acqX, axis=None)
+            self.acq_mean = np.mean(sorted_acqX[-10:])
+            self.acq_std = 1e-2*np.std(sorted_acqX[-10:])
+            print('acq mean and std changed')
+            print(self.acq_std)
+        acqX = (acqX-self.acq_mean)/self.acq_std
         return acqX
     
     
@@ -193,25 +201,18 @@ class maKG(AcquisitionBase):
         """
         """
         X =np.atleast_2d(X)
-        if self.full_support:
-            self.utility_params_samples = self.utility.parameter_dist.support
-            utility_dist = np.atleast_1d(self.utility.parameter_dist.prob_dist)
-        else:
-            self.utility_params_samples = self.utility.parameter_dist.sample(1)
-        #self.Z_samples = np.random.normal(size=10)
         # Compute marginal aquisition function and its gradient for every value of the utility function's parameters samples,
         marginal_acqX, marginal_dacq_dX = self._marginal_acq_with_gradient(X, self.utility_params_samples)
-        if self.full_support:
-            acqX = np.matmul(marginal_acqX, utility_dist)
-            dacq_dX = np.tensordot(marginal_dacq_dX, utility_dist,1)
+        if self.use_full_support:
+            acqX = np.matmul(marginal_acqX, self.utility_prob_dist)
+            dacq_dX = np.tensordot(marginal_dacq_dX, self.utility_prob_dist, 1)
         else:
             acqX = np.sum(marginal_acqX, axis=1)/len(self.utility_params_samples)
             dacq_dX = np.sum(marginal_dacq_dX, axis=2)/len(self.utility_params_samples)
         acqX = np.reshape(acqX,(X.shape[0], 1))
         dacq_dX = np.reshape(dacq_dX, X.shape)
-        #print('test')
-        #print(acqX)
-        #print(dacq_dX)
+        acqX = (acqX-self.acq_mean)/self.acq_std
+        dacq_dX /= self.acq_std
         return acqX, dacq_dX
         
         
@@ -279,4 +280,7 @@ class maKG(AcquisitionBase):
     
     
     def update_Z_samples(self):
+        print('Update utility parameter and Z samples')
         self.Z_samples = np.random.normal(size=len(self.Z_samples))
+        if not self.use_full_support:
+            self.utility_params_samples = self.utility.parameter_dist.sample(len(self.utility_params_samples))
